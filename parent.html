@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMS | Parent Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">SMS</div>
+        <div>
+          <h2>Parent</h2>
+          <p class="muted">Dashboard</p>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="nav-item active" href="#attendance">View Attendance</a>
+        <a class="nav-item" href="#profile">Update Profile</a>
+        <a class="nav-item" href="#marks">View Recent Marks</a>
+        <a class="nav-item" href="#leave">Verify Leave</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a class="btn btn-ghost" href="index.html">Logout</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Welcome, Parent</h1>
+          <p class="muted">Monitor student performance and requests.</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="badge">Student: Rahul</span>
+          <span class="badge">Roll No: 21</span>
+        </div>
+      </header>
+
+      <section class="grid">
+        <section id="attendance" class="card span-6">
+          <div class="card-head">
+            <h3>Attendance Overview</h3>
+            <p class="muted">Student attendance details</p>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><p class="muted">This Month</p><h2>88%</h2></div>
+            <div class="stat"><p class="muted">Present Days</p><h2>22</h2></div>
+            <div class="stat"><p class="muted">Absent Days</p><h2>3</h2></div>
+          </div>
+        </section>
+
+        <section id="profile" class="card span-6">
+          <div class="card-head">
+            <h3>Update Profile</h3>
+            <p class="muted">Parent contact details</p>
+          </div>
+
+          <form class="form">
+            <div class="form-row">
+              <div class="field">
+                <label>Parent Name</label>
+                <input type="text" placeholder="Enter name" />
+              </div>
+              <div class="field">
+                <label>Phone</label>
+                <input type="tel" placeholder="Enter phone" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>Email</label>
+              <input type="email" placeholder="Enter email" />
+            </div>
+
+            <button type="button" class="btn btn-primary">Save Changes</button>
+          </form>
+        </section>
+
+        <section id="marks" class="card span-6">
+          <div class="card-head">
+            <h3>Recent Marks</h3>
+            <p class="muted">Student latest results</p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Subject</th>
+                  <th>Marks</th>
+                  <th>Grade</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>SAD</td><td>18/20</td><td><span class="pill good">A</span></td></tr>
+                <tr><td>DAA</td><td>15/20</td><td><span class="pill ok">B</span></td></tr>
+                <tr><td>Multimedia</td><td>16/20</td><td><span class="pill ok">B+</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="leave" class="card span-6">
+          <div class="card-head">
+            <h3>Verify Leave Requests</h3>
+            <p class="muted">Approve or reject student leave</p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date From</th>
+                  <th>Date To</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>2026-03-05</td>
+                  <td>2026-03-06</td>
+                  <td>Medical</td>
+                  <td><span class="pill warn">Pending</span></td>
+                  <td class="actions">
+                    <button type="button" class="btn btn-small">Approve</button>
+                    <button type="button" class="btn btn-small btn-outline">Reject</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="muted small-note">Note: Buttons are for UI only (no backend).</p>
+        </section>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

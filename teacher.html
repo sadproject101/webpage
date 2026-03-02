@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMS | Teacher Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">SMS</div>
+        <div>
+          <h2>Teacher</h2>
+          <p class="muted">Dashboard</p>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="nav-item active" href="#attendance">Attendance</a>
+        <a class="nav-item" href="#grade">Grade</a>
+        <a class="nav-item" href="#requests">Leave Requests</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <a class="btn btn-ghost" href="index.html">Logout</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Welcome, Teacher</h1>
+          <p class="muted">Manage attendance, grades, and leave requests.</p>
+        </div>
+        <div class="topbar-actions">
+          <span class="badge">Subject: Multimedia</span>
+          <span class="badge">Class: CSIT</span>
+        </div>
+      </header>
+
+      <section class="grid">
+        <!-- Attendance -->
+        <section id="attendance" class="card span-6">
+          <div class="card-head">
+            <h3>Attendance</h3>
+            <p class="muted">Mark student attendance</p>
+          </div>
+
+          <form class="form">
+            <div class="form-row">
+              <div class="field">
+                <label>Date</label>
+                <input type="date" />
+              </div>
+              <div class="field">
+                <label>Lecture</label>
+                <input type="text" placeholder="e.g., Lecture 3" />
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Roll No</th>
+                    <th>Name</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>21</td><td>Rahul</td>
+                    <td>
+                      <select>
+                        <option>Present</option>
+                        <option>Absent</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>22</td><td>Neha</td>
+                    <td>
+                      <select>
+                        <option>Present</option>
+                        <option>Absent</option>
+                      </select>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <button type="button" class="btn btn-primary">Save Attendance</button>
+          </form>
+        </section>
+
+        <!-- Grade -->
+        <section id="grade" class="card span-6">
+          <div class="card-head">
+            <h3>Grade</h3>
+            <p class="muted">Update marks and grades</p>
+          </div>
+
+          <form class="form">
+            <div class="form-row">
+              <div class="field">
+                <label>Student Roll No</label>
+                <input type="text" placeholder="e.g., 21" />
+              </div>
+              <div class="field">
+                <label>Test Name</label>
+                <input type="text" placeholder="e.g., Unit Test 2" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="field">
+                <label>Marks</label>
+                <input type="text" placeholder="e.g., 18/20" />
+              </div>
+              <div class="field">
+                <label>Grade</label>
+                <select>
+                  <option>A</option>
+                  <option>B+</option>
+                  <option>B</option>
+                  <option>C</option>
+                </select>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-primary">Save Grade</button>
+          </form>
+        </section>
+
+        <!-- Requests -->
+        <section id="requests" class="card span-12">
+          <div class="card-head">
+            <h3>Leave Requests</h3>
+            <p class="muted">Approve or reject pending leave</p>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Roll No</th>
+                  <th>Name</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>21</td>
+                  <td>Rahul</td>
+                  <td>2026-03-05</td>
+                  <td>2026-03-06</td>
+                  <td>Medical</td>
+                  <td><span class="pill warn">Pending</span></td>
+                  <td class="actions">
+                    <button type="button" class="btn btn-small">Approve</button>
+                    <button type="button" class="btn btn-small btn-outline">Reject</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
