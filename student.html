@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SMS | Student Dashboard</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <div class="app">
     <aside class="sidebar">
@@ -25,9 +27,21 @@
       </nav>
 
       <div class="sidebar-footer">
-        <a class="btn btn-ghost" href="index.html">Logout</a>
+        <button class="btn btn-ghost" id="logoutBtn">Logout</button>
       </div>
     </aside>
+
+    <script type="module">
+      import { checkSession, signOut } from './auth.js'
+
+      // Check session on load
+      checkSession()
+
+      // Handle logout
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        signOut()
+      })
+    </script>
 
     <main class="main">
       <header class="topbar">
@@ -74,9 +88,21 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td>2026-03-01</td><td><span class="pill good">Present</span></td><td>SAD</td></tr>
-                <tr><td>2026-02-28</td><td><span class="pill warn">Absent</span></td><td>DAA</td></tr>
-                <tr><td>2026-02-27</td><td><span class="pill good">Present</span></td><td>Multimedia</td></tr>
+                <tr>
+                  <td>2026-03-01</td>
+                  <td><span class="pill good">Present</span></td>
+                  <td>SAD</td>
+                </tr>
+                <tr>
+                  <td>2026-02-28</td>
+                  <td><span class="pill warn">Absent</span></td>
+                  <td>DAA</td>
+                </tr>
+                <tr>
+                  <td>2026-02-27</td>
+                  <td><span class="pill good">Present</span></td>
+                  <td>Multimedia</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -134,9 +160,24 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td>DBMS</td><td>Unit Test 2</td><td>18/20</td><td><span class="pill good">A</span></td></tr>
-                <tr><td>OS</td><td>Unit Test 2</td><td>15/20</td><td><span class="pill ok">B</span></td></tr>
-                <tr><td>CN</td><td>Unit Test 2</td><td>16/20</td><td><span class="pill ok">B+</span></td></tr>
+                <tr>
+                  <td>DBMS</td>
+                  <td>Unit Test 2</td>
+                  <td>18/20</td>
+                  <td><span class="pill good">A</span></td>
+                </tr>
+                <tr>
+                  <td>OS</td>
+                  <td>Unit Test 2</td>
+                  <td>15/20</td>
+                  <td><span class="pill ok">B</span></td>
+                </tr>
+                <tr>
+                  <td>CN</td>
+                  <td>Unit Test 2</td>
+                  <td>16/20</td>
+                  <td><span class="pill ok">B+</span></td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -173,4 +214,5 @@
     </main>
   </div>
 </body>
+
 </html>

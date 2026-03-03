@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SMS | Parent Dashboard</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <div class="app">
     <aside class="sidebar">
@@ -25,9 +27,21 @@
       </nav>
 
       <div class="sidebar-footer">
-        <a class="btn btn-ghost" href="index.html">Logout</a>
+        <button class="btn btn-ghost" id="logoutBtn">Logout</button>
       </div>
     </aside>
+
+    <script type="module">
+      import { checkSession, signOut } from './auth.js'
+
+      // Check session on load
+      checkSession()
+
+      // Handle logout
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        signOut()
+      })
+    </script>
 
     <main class="main">
       <header class="topbar">
@@ -49,9 +63,18 @@
           </div>
 
           <div class="stats">
-            <div class="stat"><p class="muted">This Month</p><h2>88%</h2></div>
-            <div class="stat"><p class="muted">Present Days</p><h2>22</h2></div>
-            <div class="stat"><p class="muted">Absent Days</p><h2>3</h2></div>
+            <div class="stat">
+              <p class="muted">This Month</p>
+              <h2>88%</h2>
+            </div>
+            <div class="stat">
+              <p class="muted">Present Days</p>
+              <h2>22</h2>
+            </div>
+            <div class="stat">
+              <p class="muted">Absent Days</p>
+              <h2>3</h2>
+            </div>
           </div>
         </section>
 
@@ -98,9 +121,21 @@
                 </tr>
               </thead>
               <tbody>
-                <tr><td>SAD</td><td>18/20</td><td><span class="pill good">A</span></td></tr>
-                <tr><td>DAA</td><td>15/20</td><td><span class="pill ok">B</span></td></tr>
-                <tr><td>Multimedia</td><td>16/20</td><td><span class="pill ok">B+</span></td></tr>
+                <tr>
+                  <td>SAD</td>
+                  <td>18/20</td>
+                  <td><span class="pill good">A</span></td>
+                </tr>
+                <tr>
+                  <td>DAA</td>
+                  <td>15/20</td>
+                  <td><span class="pill ok">B</span></td>
+                </tr>
+                <tr>
+                  <td>Multimedia</td>
+                  <td>16/20</td>
+                  <td><span class="pill ok">B+</span></td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -144,4 +179,5 @@
     </main>
   </div>
 </body>
+
 </html>

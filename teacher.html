@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SMS | Teacher Dashboard</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <div class="app">
     <aside class="sidebar">
@@ -24,9 +26,21 @@
       </nav>
 
       <div class="sidebar-footer">
-        <a class="btn btn-ghost" href="index.html">Logout</a>
+        <button class="btn btn-ghost" id="logoutBtn">Logout</button>
       </div>
     </aside>
+
+    <script type="module">
+      import { checkSession, signOut } from './auth.js'
+
+      // Check session on load
+      checkSession()
+
+      // Handle logout
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        signOut()
+      })
+    </script>
 
     <main class="main">
       <header class="topbar">
@@ -71,7 +85,8 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>21</td><td>Rahul</td>
+                    <td>21</td>
+                    <td>Rahul</td>
                     <td>
                       <select>
                         <option>Present</option>
@@ -80,7 +95,8 @@
                     </td>
                   </tr>
                   <tr>
-                    <td>22</td><td>Neha</td>
+                    <td>22</td>
+                    <td>Neha</td>
                     <td>
                       <select>
                         <option>Present</option>
@@ -176,4 +192,5 @@
     </main>
   </div>
 </body>
+
 </html>
