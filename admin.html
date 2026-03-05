@@ -53,6 +53,11 @@
                 </div>
                 <div class="nav" style="margin-top: 20px;">
                     <a href="admin.html" class="nav-item active">Manage Students</a>
+                    <a href="#" id="openCreateUserModalBtn" class="nav-item">Create User Account</a>
+
+                    <!-- Hidden file input for CSV -->
+                    <input type="file" id="csvFileInput" accept=".csv" style="display: none;" />
+                    <a href="#" id="openCsvUploadBtn" class="nav-item">Import Users (CSV)</a>
                 </div>
             </div>
             <div class="sidebar-footer">
@@ -145,6 +150,57 @@
         </div>
     </div>
 
+    <!-- Create User Modal -->
+    <div id="createUserModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 16px;">Create New User Account (Auth)</h3>
+            <p class="muted small-note" style="margin-bottom: 16px;">This creates real login credentials for a new user.
+            </p>
+            <form id="createUserForm" class="form">
+                <div class="form-row">
+                    <div class="field">
+                        <label>Full Name</label>
+                        <input type="text" id="cuName" required />
+                    </div>
+                    <div class="field">
+                        <label>Email Address</label>
+                        <input type="email" id="cuEmail" required />
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="field">
+                        <label>Password</label>
+                        <input type="text" id="cuPassword" required minlength="6" />
+                    </div>
+                    <div class="field">
+                        <label>Role</label>
+                        <select id="cuRole" required>
+                            <option value="">Select Role</option>
+                            <option value="student">Student</option>
+                            <option value="teacher">Teacher</option>
+                            <option value="parent">Parent</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row" style="margin-bottom: 16px;">
+                    <div class="field">
+                        <label>Program / Department</label>
+                        <input type="text" id="cuProgram" placeholder="e.g. CSIT" />
+                    </div>
+                    <div class="field">
+                        <label>Phone Number</label>
+                        <input type="number" id="cuPhone" />
+                    </div>
+                </div>
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button type="button" id="closeCreateUserModalBtn" class="btn btn-outline">Cancel</button>
+                    <button type="submit" id="submitCreateUserBtn" class="btn btn-primary">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script type="module">
         import { checkSession, signOut } from './auth.js'
         import { supabase } from './supabase.js'
@@ -157,6 +213,9 @@
             const tbody = document.getElementById('studentTableBody')
             const modal = document.getElementById('studentModal')
             const form = document.getElementById('studentForm')
+
+            const createUserModal = document.getElementById('createUserModal')
+            const createUserForm = document.getElementById('createUserForm')
 
             // Load Students
             async function loadStudents() {
@@ -282,6 +341,131 @@
                     alert('Error deleting student: ' + err.message)
                 }
             }
+
+            // Create User Logic
+            document.getElementById('openCreateUserModalBtn').addEventListener('click', (e) => {
+                e.preventDefault()
+                createUserForm.reset()
+                createUserModal.classList.add('active')
+            })
+
+            document.getElementById('closeCreateUserModalBtn').addEventListener('click', () => {
+                createUserModal.classList.remove('active')
+            })
+
+            createUserForm.addEventListener('submit', async (e) => {
+                e.preventDefault()
+                const submitBtn = document.getElementById('submitCreateUserBtn')
+                const originalText = submitBtn.textContent
+                submitBtn.disabled = true
+                submitBtn.textContent = 'Creating User...'
+
+                const payload = {
+                    p_email: document.getElementById('cuEmail').value,
+                    p_password: document.getElementById('cuPassword').value,
+                    p_name: document.getElementById('cuName').value,
+                    p_role: document.getElementById('cuRole').value,
+                    p_program: document.getElementById('cuProgram').value || '',
+                    p_phone: parseInt(document.getElementById('cuPhone').value) || 0
+                }
+
+                try {
+                    const { data, error } = await supabase.rpc('create_user_account', payload)
+
+                    if (error) {
+                        console.error("RPC Error:", error)
+                        throw new Error(error.message || 'Failed to create user. Ensure the RPC function exists in Supabase.')
+                    }
+
+                    alert('User created successfully! They can now log in.')
+                    createUserModal.classList.remove('active')
+                } catch (err) {
+                    alert(err.message)
+                } finally {
+                    submitBtn.disabled = false
+                    submitBtn.textContent = originalText
+                }
+            })
+
+            // CSV Upload Logic
+            const csvFileInput = document.getElementById('csvFileInput')
+            document.getElementById('openCsvUploadBtn').addEventListener('click', (e) => {
+                e.preventDefault()
+                csvFileInput.click() // trigger the file selector
+            })
+
+            csvFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0]
+                if (!file) return
+
+                const reader = new FileReader()
+                reader.onload = async (event) => {
+                    const text = event.target.result
+                    const rows = text.split('\n').map(row => row.trim()).filter(row => row)
+
+                    if (rows.length < 2) {
+                        alert('CSV file is empty or only contains headers.')
+                        csvFileInput.value = ''
+                        return
+                    }
+
+                    // Confirm before starting import
+                    if (!confirm(`Found ${rows.length - 1} rows in CSV (assuming 1 header row). Do you want to process them?`)) {
+                        csvFileInput.value = ''
+                        return
+                    }
+
+                    let successCount = 0
+                    let errCount = 0
+                    let errMessages = []
+
+                    // Start from 1 to skip the header (user_name, user_email, etc.)
+                    for (let i = 1; i < rows.length; i++) {
+                        // Simple split, assuming no commas inside the actual data values
+                        const cols = rows[i].split(',').map(c => c.trim())
+
+                        if (cols.length < 6) {
+                            errCount++
+                            errMessages.push(`Row ${i + 1}: Missing columns. Found ${cols.length}, expected 6.`)
+                            continue
+                        }
+
+                        const payload = {
+                            p_name: cols[0],
+                            p_email: cols[1],
+                            p_password: cols[2],
+                            p_role: cols[3].toLowerCase(),
+                            p_program: cols[4] || '',
+                            p_phone: parseInt(cols[5]) || 0
+                        }
+
+                        try {
+                            const { error } = await supabase.rpc('create_user_account', payload)
+                            if (error) {
+                                errCount++
+                                errMessages.push(`Row ${i + 1} (${cols[1]}): ${error.message}`)
+                            } else {
+                                successCount++
+                            }
+                        } catch (err) {
+                            errCount++
+                            errMessages.push(`Row ${i + 1} (${cols[1]}): ${err.message}`)
+                        }
+                    }
+
+                    // Summary
+                    let summary = `Import Complete!\n\nSuccessfully created: ${successCount}\nErrors: ${errCount}`
+                    if (errCount > 0 && errMessages.length > 0) {
+                        summary += `\n\nFirst few errors:\n${errMessages.slice(0, 3).join('\n')}`
+                        if (errMessages.length > 3) summary += '\n...'
+                    }
+                    alert(summary)
+
+                    csvFileInput.value = '' // Reset input
+                    loadStudents() // Refresh list if we imported students
+                }
+                reader.readAsText(file)
+            })
 
             // Initial load
             loadStudents()
