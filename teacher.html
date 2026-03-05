@@ -32,14 +32,159 @@
 
     <script type="module">
       import { checkSession, signOut } from './auth.js'
+      import { supabase } from './supabase.js'
+
+      let currentTeacherId = null
+      let currentStudents = []
 
       // Check session on load
-      checkSession()
+      checkSession().then(session => {
+        if (session && session.user) {
+          currentTeacherId = session.user.id
+          initTeacherDashboard()
+        }
+      })
 
       // Handle logout
       document.getElementById('logoutBtn').addEventListener('click', () => {
         signOut()
       })
+
+      async function initTeacherDashboard() {
+        // Set today's date as default
+        document.getElementById('attendanceDate').valueAsDate = new Date()
+
+        // 1. Fetch unique programs to populate the dropdown
+        try {
+          // We can get unique programs by querying auth.users user_metadata by using an RPC,
+          // OR simply querying the `student` table if it has a program column.
+          // Since `student` table currently doesn't have a program column (based on previous schema), 
+          // we will rely on a generic list for now, or you can add them manually to the DB.
+          // For now, let's hardcode the common ones or fetch from a 'programs' table if you make one.
+          const programs = ['CSIT', 'BCA', 'BIM', 'BBA']
+          const programSelect = document.getElementById('attendanceProgram')
+
+          programs.forEach(prog => {
+            const opt = document.createElement('option')
+            opt.value = opt.textContent = prog
+            programSelect.appendChild(opt)
+          })
+
+        } catch (err) {
+          console.error("Error loading programs:", err)
+        }
+
+        // 2. Listen for Class selection to load students
+        document.getElementById('attendanceProgram').addEventListener('change', async (e) => {
+          const program = e.target.value
+          const tbody = document.getElementById('attendanceTbody')
+          const saveBtn = document.getElementById('saveAttendanceBtn')
+
+          if (!program) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Select a class to load students</td></tr>'
+            saveBtn.disabled = true
+            currentStudents = []
+            return
+          }
+
+          tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading students...</td></tr>'
+          saveBtn.disabled = true
+
+          try {
+            // Ideally your `student` table needs a `program` column to filter by. 
+            // If it doesn't have one yet, we will just fetch ALL students for this demo.
+            // *Tip: Add a `program` column to `public.student` in Supabase to make this filter work completely!*
+            const { data, error } = await supabase
+              .from('student')
+              .select('*')
+              .order('roll_number')
+
+            if (error) throw error
+
+            currentStudents = data || []
+
+            if (currentStudents.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No students found.</td></tr>'
+              return
+            }
+
+            // Render students
+            tbody.innerHTML = ''
+            currentStudents.forEach((student, index) => {
+              const tr = document.createElement('tr')
+              tr.innerHTML = `
+                <td>${student.roll_number || '-'}</td>
+                <td>${student.name || 'Unnamed'}</td>
+                <td>
+                  <select class="attendance-select" data-id="${student.profile_id}">
+                    <option value="present">Present</option>
+                    <option value="absent">Absent</option>
+                    <option value="late">Late</option>
+                    <option value="excused">Excused</option>
+                  </select>
+                </td>
+              `
+              tbody.appendChild(tr)
+            })
+
+            saveBtn.disabled = false
+
+          } catch (err) {
+            tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Error: ${err.message}</td></tr>`
+          }
+        })
+
+        // 3. Handle Form Submission
+        document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
+          e.preventDefault()
+
+          if (currentStudents.length === 0) return
+
+          const date = document.getElementById('attendanceDate').value
+          const remarks = document.getElementById('attendanceRemarks').value
+          const saveBtn = document.getElementById('saveAttendanceBtn')
+
+          saveBtn.textContent = 'Saving...'
+          saveBtn.disabled = true
+
+          try {
+            // Gather all the select dropdowns
+            const selects = document.querySelectorAll('.attendance-select')
+
+            // Build the array of inserts
+            const payload = Array.from(selects).map(select => {
+              return {
+                student_id: select.dataset.id,
+                date: date,
+                recorded_by: currentTeacherId,
+                remarks: remarks || null,
+                status: select.value
+              }
+            })
+
+            // Validate: remove any where student_id is null (e.g. students without properly linked accounts)
+            const validPayload = payload.filter(p => p.student_id !== "undefined" && p.student_id !== null && p.student_id !== "")
+
+            if (validPayload.length === 0) {
+              throw new Error("No valid student profiles to save attendance for. Make sure students have profile_ids.")
+            }
+
+            const { error } = await supabase.from('attendance').insert(validPayload)
+
+            if (error) throw error
+
+            alert(`Successfully saved attendance for ${validPayload.length} students!`)
+
+          } catch (err) {
+            console.error("Save error:", err)
+            alert("Error saving attendance: " + err.message)
+          } finally {
+            saveBtn.textContent = 'Save Attendance'
+            saveBtn.disabled = false
+          }
+        })
+
+      }
     </script>
 
     <main class="main">
@@ -62,15 +207,22 @@
             <p class="muted">Mark student attendance</p>
           </div>
 
-          <form class="form">
+          <form class="form" id="attendanceForm">
             <div class="form-row">
               <div class="field">
                 <label>Date</label>
-                <input type="date" />
+                <input type="date" id="attendanceDate" required />
               </div>
               <div class="field">
-                <label>Lecture</label>
-                <input type="text" placeholder="e.g., Lecture 3" />
+                <label>Class/Program</label>
+                <select id="attendanceProgram" required>
+                  <option value="">Select Class...</option>
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+              <div class="field">
+                <label>Remarks / Lecture</label>
+                <input type="text" id="attendanceRemarks" placeholder="e.g., Lecture 3" />
               </div>
             </div>
 
@@ -83,112 +235,94 @@
                     <th>Status</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody id="attendanceTbody">
                   <tr>
-                    <td>21</td>
-                    <td>Rahul</td>
-                    <td>
-                      <select>
-                        <option>Present</option>
-                        <option>Absent</option>
-                      </select>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>22</td>
-                    <td>Neha</td>
-                    <td>
-                      <select>
-                        <option>Present</option>
-                        <option>Absent</option>
-                      </select>
-                    </td>
+                    <td colspan="3" style="text-align: center;">Select a class to load students</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            <button type="button" class="btn btn-primary">Save Attendance</button>
-          </form>
-        </section>
+            <button type="submit" id="saveAttendanceBtn" class="btn btn-primary" disabled>Save Attendance</button>
+          </form </section>
 
-        <!-- Grade -->
-        <section id="grade" class="card span-6">
-          <div class="card-head">
-            <h3>Grade</h3>
-            <p class="muted">Update marks and grades</p>
-          </div>
-
-          <form class="form">
-            <div class="form-row">
-              <div class="field">
-                <label>Student Roll No</label>
-                <input type="text" placeholder="e.g., 21" />
-              </div>
-              <div class="field">
-                <label>Test Name</label>
-                <input type="text" placeholder="e.g., Unit Test 2" />
-              </div>
+          <!-- Grade -->
+          <section id="grade" class="card span-6">
+            <div class="card-head">
+              <h3>Grade</h3>
+              <p class="muted">Update marks and grades</p>
             </div>
 
-            <div class="form-row">
-              <div class="field">
-                <label>Marks</label>
-                <input type="text" placeholder="e.g., 18/20" />
+            <form class="form">
+              <div class="form-row">
+                <div class="field">
+                  <label>Student Roll No</label>
+                  <input type="text" placeholder="e.g., 21" />
+                </div>
+                <div class="field">
+                  <label>Test Name</label>
+                  <input type="text" placeholder="e.g., Unit Test 2" />
+                </div>
               </div>
-              <div class="field">
-                <label>Grade</label>
-                <select>
-                  <option>A</option>
-                  <option>B+</option>
-                  <option>B</option>
-                  <option>C</option>
-                </select>
+
+              <div class="form-row">
+                <div class="field">
+                  <label>Marks</label>
+                  <input type="text" placeholder="e.g., 18/20" />
+                </div>
+                <div class="field">
+                  <label>Grade</label>
+                  <select>
+                    <option>A</option>
+                    <option>B+</option>
+                    <option>B</option>
+                    <option>C</option>
+                  </select>
+                </div>
               </div>
+
+              <button type="button" class="btn btn-primary">Save Grade</button>
+            </form>
+          </section>
+
+          <!-- Requests -->
+          <section id="requests" class="card span-12">
+            <div class="card-head">
+              <h3>Leave Requests</h3>
+              <p class="muted">Approve or reject pending leave</p>
             </div>
 
-            <button type="button" class="btn btn-primary">Save Grade</button>
-          </form>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Roll No</th>
+                    <th>Name</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>21</td>
+                    <td>Rahul</td>
+                    <td>2026-03-05</td>
+                    <td>2026-03-06</td>
+                    <td>Medical</td>
+                    <td><span class="pill warn">Pending</span></td>
+                    <td class="actions">
+                      <button type="button" class="btn btn-small">Approve</button>
+                      <button type="button" class="btn btn-small btn-outline">Reject</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </section>
-
-        <!-- Requests -->
-        <section id="requests" class="card span-12">
-          <div class="card-head">
-            <h3>Leave Requests</h3>
-            <p class="muted">Approve or reject pending leave</p>
-          </div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Roll No</th>
-                  <th>Name</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Reason</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>21</td>
-                  <td>Rahul</td>
-                  <td>2026-03-05</td>
-                  <td>2026-03-06</td>
-                  <td>Medical</td>
-                  <td><span class="pill warn">Pending</span></td>
-                  <td class="actions">
-                    <button type="button" class="btn btn-small">Approve</button>
-                    <button type="button" class="btn btn-small btn-outline">Reject</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </section>
     </main>
   </div>
 </body>

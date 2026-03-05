@@ -71,7 +71,8 @@
             document.getElementById('studentPhone').value = data.phone_num || ''
             document.getElementById('studentDob').value = data.date_of_birth || ''
             document.getElementById('studentGender').value = data.gender || ''
-            // Roll number is displayed but usually shouldn't be edited by the student directly
+            document.getElementById('studentRollNoInput').value = data.roll_number || ''
+            // Roll number is displayed top right
             document.getElementById('studentRollNo').textContent = data.roll_number || 'N/A'
           }
         } catch (err) {
@@ -92,13 +93,15 @@
         const phone = document.getElementById('studentPhone').value
         const dob = document.getElementById('studentDob').value
         const gender = document.getElementById('studentGender').value
+        const roll_number = document.getElementById('studentRollNoInput').value
 
         try {
           const updatePayload = {
             name: name,
             phone_num: phone,
             date_of_birth: dob,
-            gender: gender
+            gender: gender,
+            roll_number: roll_number
           }
           console.log('Sending update to Supabase for profile_id:', currentUserId, 'Payload:', updatePayload)
 
@@ -206,29 +209,34 @@
           <form class="form" id="profileForm">
             <div class="form-row">
               <div class="field">
-                <label>Full Name</label>
-                <input type="text" id="studentName" placeholder="Enter name" />
+                <label>Roll Number</label>
+                <input type="number" id="studentRollNoInput" placeholder="Enter roll no" />
               </div>
               <div class="field">
-                <label>Phone Number</label>
-                <input type="number" id="studentPhone" placeholder="Enter phone" />
+                <label>Full Name</label>
+                <input type="text" id="studentName" placeholder="Enter name" />
               </div>
             </div>
 
             <div class="form-row">
               <div class="field">
+                <label>Phone Number</label>
+                <input type="number" id="studentPhone" placeholder="Enter phone" />
+              </div>
+              <div class="field">
                 <label>Date of Birth</label>
                 <input type="date" id="studentDob" />
               </div>
-              <div class="field">
-                <label>Gender</label>
-                <select id="studentGender">
-                  <option value="">Select Gender</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
+            </div>
+
+            <div class="field" style="margin-bottom: 16px;">
+              <label>Gender</label>
+              <select id="studentGender">
+                <option value="">Select Gender</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
 
             <button type="button" id="saveProfileBtn" class="btn btn-primary">Save Changes</button>
