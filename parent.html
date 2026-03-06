@@ -32,49 +32,280 @@
     </aside>
 
     <script type="module">
-      import { checkSession, signOut } from './auth.js'
-
       // Check session on load
-      checkSession()
+      import { checkSession, signOut } from './auth.js'
+      import { supabase } from './supabase.js'
+
+      let currentParentId = null
+      let currentParentEmail = null
+
+      checkSession().then(async session => {
+        if (session && session.user) {
+          currentParentId = session.user.id
+          currentParentEmail = session.user.email
+          await loadParentProfile()
+          await loadParentLeaveRequests()
+          await loadParentAttendance()
+        }
+      }).catch(err => console.error(err))
 
       // Handle logout
       document.getElementById('logoutBtn').addEventListener('click', () => {
         signOut()
       })
+
+      async function loadParentLeaveRequests() {
+        const tbody = document.getElementById('leaveRequestsTbody')
+        if (!tbody || !currentParentEmail) return
+
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading children and requests...</td></tr>'
+
+        try {
+          // 1. Find all students belonging to this parent
+          // The student table has a 'parent' column storing the parent_id (UUID)
+          console.log('[DEBUG] Searching `student` table for currentParentId:', currentParentId)
+
+          const { data: students, error: studErr } = await supabase
+            .from('student')
+            .select('profile_id, name')
+            .eq('parent', currentParentId)
+
+          if (studErr) {
+            console.error('[DEBUG] Student lookup error:', studErr)
+            throw studErr
+          }
+          console.log('[DEBUG] Students found (count):', students ? students.length : 0)
+          console.log('[DEBUG] Full students array:', students)
+
+          // Debug column check if empty
+          if (!students || students.length === 0) {
+            const { data: colCheck } = await supabase.from('student').select('*').limit(1)
+            if (colCheck && colCheck.length > 0) {
+              console.log('[DEBUG] Actual columns in student table:', Object.keys(colCheck[0]))
+            }
+          }
+
+          if (!students || students.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No linked children found.</td></tr>'
+            return
+          }
+
+          const studentIds = students.map(s => s.profile_id)
+          const studentMap = Object.fromEntries(students.map(s => [s.profile_id, s.name]))
+
+          // 2. Fetch leave requests specifically for these children where status is 'applied'
+          const { data: requests, error: reqErr } = await supabase
+            .from('leave_request')
+            .select('*')
+            .in('requester_id', studentIds)
+            .eq('status', 'applied')
+            .order('start_date', { ascending: false })
+
+          if (reqErr) throw reqErr
+
+          if (!requests || requests.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No pending leave requests.</td></tr>'
+            return
+          }
+
+          tbody.innerHTML = requests.map(req => `
+            <tr>
+              <td>${studentMap[req.requester_id] || 'Unknown'}</td>
+              <td>${req.start_date}</td>
+              <td>${req.end_date}</td>
+              <td>${req.reason}</td>
+              <td><span class="pill warn">Applied</span></td>
+              <td class="actions">
+                <button type="button" class="btn btn-small btn-primary agree-btn" data-id="${req.id}">Agree</button>
+                <button type="button" class="btn btn-small btn-outline reject-btn" data-id="${req.id}">Reject</button>
+              </td>
+            </tr>
+          `).join('')
+
+          document.querySelectorAll('.agree-btn').forEach(btn => btn.addEventListener('click', () => handleLeaveStatus(btn.dataset.id, 'agreed')))
+          document.querySelectorAll('.reject-btn').forEach(btn => btn.addEventListener('click', () => handleLeaveStatus(btn.dataset.id, 'rejected')))
+
+        } catch (err) {
+          console.error(err)
+          tbody.innerHTML = `<tr><td colspan="6" style="color:red;text-align:center">Error loading requests: ${err.message}</td></tr>`
+        }
+      }
+
+      async function handleLeaveStatus(requestId, newStatus) {
+        try {
+          const { error } = await supabase
+            .from('leave_request')
+            .update({ status: newStatus })
+            .eq('id', requestId)
+
+          if (error) throw error
+
+          alert(`Leave request marked as ${newStatus}.`)
+          loadParentLeaveRequests() // refresh
+        } catch (err) {
+          alert('Error updating status: ' + err.message)
+        }
+      }
+
+      // ── Load Parent Attendance Overview ──────────────────────────────
+      async function loadParentAttendance() {
+        const tbody = document.getElementById('parentAttendanceTbody')
+        if (!tbody || !currentParentId) return
+
+        try {
+          // 1. Get Children
+          const { data: students, error: studErr } = await supabase
+            .from('student')
+            .select('profile_id, name')
+            .eq('parent', currentParentId)
+
+          if (studErr) throw studErr
+
+          if (!students || students.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No linked children found.</td></tr>'
+            return
+          }
+
+          const studentIds = students.map(s => s.profile_id)
+          const studentMap = Object.fromEntries(students.map(s => [s.profile_id, s.name]))
+
+          // 2. Get Attendance
+          const { data: attendance, error: attErr } = await supabase
+            .from('attendance')
+            .select('student_id, status')
+            .in('student_id', studentIds)
+
+          if (attErr) throw attErr
+
+          // 3. Aggregate
+          const stats = {}
+          studentIds.forEach(id => { stats[id] = { present: 0, absent: 0 } })
+
+          if (attendance) {
+            attendance.forEach(r => {
+              const st = r.status.toLowerCase()
+              if (st === 'present') stats[r.student_id].present++
+              if (st === 'absent' || st === 'late') stats[r.student_id].absent++
+            })
+          }
+
+          // 4. Render
+          const html = studentIds.map(id => {
+            const p = stats[id].present
+            const a = stats[id].absent
+            const t = p + a
+            const pct = t === 0 ? 0 : Math.round((p / t) * 100)
+            return `
+              <tr>
+                <td>${studentMap[id] || 'Unknown'}</td>
+                <td>${p}</td>
+                <td>${a}</td>
+                <td><span class="pill ${pct >= 75 ? 'good' : (pct >= 50 ? 'ok' : 'warn')}">${pct}%</span></td>
+              </tr>
+            `
+          }).join('')
+
+          tbody.innerHTML = html
+
+        } catch (err) {
+          console.error('[loadParentAttendance error]', err)
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:red;">Error loading attendance</td></tr>'
+        }
+      }
+      // ── Load Parent Profile ──────────────────────────────
+      async function loadParentProfile() {
+        try {
+          const { data, error } = await supabase
+            .from('parents')
+            .select('parent_name, parentsemailaddress, parents_phonenumber')
+            .eq('parents_id', currentParentId)
+            .single()
+
+          if (!error && data) {
+            document.getElementById('parentWelcomeName').textContent = `Welcome, ${data.parent_name || 'Parent'}`
+            document.getElementById('parentEmailBadge').textContent = data.parentsemailaddress || currentParentEmail
+
+            document.getElementById('parentNameInput').value = data.parent_name || ''
+            document.getElementById('parentPhoneInput').value = data.parents_phonenumber || ''
+            document.getElementById('parentEmailInput').value = data.parentsemailaddress || ''
+          } else {
+            document.getElementById('parentEmailBadge').textContent = currentParentEmail || 'Parent'
+          }
+        } catch (err) {
+          console.error('[loadParentProfile error]', err)
+        }
+      }
+
+      // Handle Profile Save
+      document.addEventListener('DOMContentLoaded', () => {
+        const profileForm = document.getElementById('parentProfileForm')
+        if (profileForm) {
+          profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const btn = document.getElementById('saveParentProfileBtn')
+            const orig = btn.textContent
+            btn.textContent = 'Saving...'
+            btn.disabled = true
+
+            try {
+              const { error } = await supabase
+                .from('parents')
+                .upsert({
+                  parents_id: currentParentId,
+                  parent_name: document.getElementById('parentNameInput').value,
+                  parents_phonenumber: document.getElementById('parentPhoneInput').value,
+                  parentsemailaddress: document.getElementById('parentEmailInput').value
+                })
+
+              if (error) throw error
+              alert('Profile updated successfully!')
+              loadParentProfile() // refresh topbar
+            } catch (err) {
+              alert('Failed to update profile: ' + err.message)
+            } finally {
+              btn.textContent = orig
+              btn.disabled = false
+            }
+          })
+        }
+      })
+
     </script>
 
     <main class="main">
       <header class="topbar">
         <div>
-          <h1>Welcome, Parent</h1>
+          <h1 id="parentWelcomeName">Welcome, Parent</h1>
           <p class="muted">Monitor student performance and requests.</p>
         </div>
         <div class="topbar-actions">
-          <span class="badge">Student: Rahul</span>
-          <span class="badge">Roll No: 21</span>
+          <span class="badge" id="parentEmailBadge">Loading...</span>
         </div>
       </header>
 
       <section class="grid">
-        <section id="attendance" class="card span-6">
+        <section id="attendance" class="card span-12">
           <div class="card-head">
             <h3>Attendance Overview</h3>
-            <p class="muted">Student attendance details</p>
+            <p class="muted">Attendance summary for all linked children</p>
           </div>
 
-          <div class="stats">
-            <div class="stat">
-              <p class="muted">This Month</p>
-              <h2>88%</h2>
-            </div>
-            <div class="stat">
-              <p class="muted">Present Days</p>
-              <h2>22</h2>
-            </div>
-            <div class="stat">
-              <p class="muted">Absent Days</p>
-              <h2>3</h2>
-            </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Student Name</th>
+                  <th>Present Days</th>
+                  <th>Absent Days</th>
+                  <th>Percentage</th>
+                </tr>
+              </thead>
+              <tbody id="parentAttendanceTbody">
+                <tr>
+                  <td colspan="4" style="text-align:center">Loading attendance...</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
@@ -84,24 +315,24 @@
             <p class="muted">Parent contact details</p>
           </div>
 
-          <form class="form">
+          <form class="form" id="parentProfileForm">
             <div class="form-row">
               <div class="field">
                 <label>Parent Name</label>
-                <input type="text" placeholder="Enter name" />
+                <input type="text" id="parentNameInput" placeholder="Enter name" />
               </div>
               <div class="field">
                 <label>Phone</label>
-                <input type="tel" placeholder="Enter phone" />
+                <input type="tel" id="parentPhoneInput" placeholder="Enter phone" />
               </div>
             </div>
 
             <div class="field">
               <label>Email</label>
-              <input type="email" placeholder="Enter email" />
+              <input type="email" id="parentEmailInput" placeholder="Enter email" readonly />
             </div>
 
-            <button type="button" class="btn btn-primary">Save Changes</button>
+            <button type="submit" id="saveParentProfileBtn" class="btn btn-primary">Save Changes</button>
           </form>
         </section>
 
@@ -122,35 +353,24 @@
               </thead>
               <tbody>
                 <tr>
-                  <td>SAD</td>
-                  <td>18/20</td>
-                  <td><span class="pill good">A</span></td>
-                </tr>
-                <tr>
-                  <td>DAA</td>
-                  <td>15/20</td>
-                  <td><span class="pill ok">B</span></td>
-                </tr>
-                <tr>
-                  <td>Multimedia</td>
-                  <td>16/20</td>
-                  <td><span class="pill ok">B+</span></td>
+                  <td colspan="3" style="text-align:center" class="muted">No recent marks found.</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </section>
 
-        <section id="leave" class="card span-6">
+        <section id="leave" class="card span-12">
           <div class="card-head">
             <h3>Verify Leave Requests</h3>
-            <p class="muted">Approve or reject student leave</p>
+            <p class="muted">Review pending leave requests for your children</p>
           </div>
 
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th>Student Name</th>
                   <th>Date From</th>
                   <th>Date To</th>
                   <th>Reason</th>
@@ -158,22 +378,13 @@
                   <th>Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="leaveRequestsTbody">
                 <tr>
-                  <td>2026-03-05</td>
-                  <td>2026-03-06</td>
-                  <td>Medical</td>
-                  <td><span class="pill warn">Pending</span></td>
-                  <td class="actions">
-                    <button type="button" class="btn btn-small">Approve</button>
-                    <button type="button" class="btn btn-small btn-outline">Reject</button>
-                  </td>
+                  <td colspan="6" style="text-align:center">Loading...</td>
                 </tr>
               </tbody>
             </table>
           </div>
-
-          <p class="muted small-note">Note: Buttons are for UI only (no backend).</p>
         </section>
       </section>
     </main>

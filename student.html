@@ -52,84 +52,192 @@
         signOut()
       })
 
-      async function loadStudentProfile(userId) {
-        try {
-          // Fetch student data
-          const { data, error } = await supabase
-            .from('student')
-            .select('*')
-            .eq('profile_id', userId)
-            .single()
 
-          if (error) {
-            console.warn('Student profile not found or error:', error.message)
+
+      // ── Leave Request ─────────────────────────────────────────────
+      document.getElementById('leaveForm').addEventListener('submit', async (e) => {
+        e.preventDefault()
+        if (!currentUserId) return
+
+        const btn = document.getElementById('leaveSubmitBtn')
+        const orig = btn.textContent
+        btn.textContent = 'Submitting...'
+        btn.disabled = true
+
+        const start_date = document.getElementById('leaveFrom').value
+        const end_date = document.getElementById('leaveTo').value
+        const reason = document.getElementById('leaveReason').value.trim()
+
+        if (!start_date || !end_date || !reason) {
+          alert('Please fill in all fields.')
+          btn.textContent = orig; btn.disabled = false; return
+        }
+        if (end_date < start_date) {
+          alert('"To" date cannot be before "From" date.')
+          btn.textContent = orig; btn.disabled = false; return
+        }
+
+        try {
+          const { error } = await supabase.from('leave_request').insert([{
+            requester_id: currentUserId,
+            start_date,
+            end_date,
+            reason,
+            status: 'applied',
+            approved_by: null
+          }])
+          if (error) throw error
+          alert('Leave request submitted!')
+          e.target.reset()
+          loadLeaveRequests()
+        } catch (err) {
+          alert('Failed to submit: ' + err.message)
+        } finally {
+          btn.textContent = orig
+          btn.disabled = false
+        }
+      })
+
+      async function loadLeaveRequests() {
+        const tbody = document.getElementById('leaveHistoryTbody')
+        if (!tbody || !currentUserId) return
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>'
+        const { data, error } = await supabase
+          .from('leave_request')
+          .select('start_date, end_date, reason, status')
+          .eq('requester_id', currentUserId)
+          .order('start_date', { ascending: false })
+        if (error) { tbody.innerHTML = `<tr><td colspan="4">${error.message}</td></tr>`; return }
+        if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No requests yet.</td></tr>'; return }
+        const pillClass = { applied: 'warn', approved: 'good', rejected: 'ok' }
+        tbody.innerHTML = data.map(r => `
+          <tr>
+            <td>${r.start_date}</td><td>${r.end_date}</td>
+            <td>${r.reason}</td>
+            <td><span class="pill ${pillClass[r.status] || ''}">${r.status}</span></td>
+          </tr>`).join('')
+      }
+      async function loadAttendance() {
+        const tbody = document.getElementById('attTbody')
+        if (!tbody || !currentUserId) return
+
+        try {
+          const { data, error } = await supabase
+            .from('attendance')
+            .select('date, status, subject, remarks')
+            .eq('student_id', currentUserId)
+            .order('date', { ascending: false })
+
+          if (error) throw error
+
+          let presentCount = 0
+          let absentCount = 0
+
+          if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No records yet.</td></tr>'
+            document.getElementById('attPresent').textContent = '0'
+            document.getElementById('attAbsent').textContent = '0'
+            document.getElementById('attPercent').textContent = '0%'
             return
           }
 
-          if (data) {
+          const html = data.map(r => {
+            const st = r.status.toLowerCase()
+            if (st === 'present') presentCount++
+            if (st === 'absent') absentCount++
+            const pillClass = st === 'present' ? 'good' : (st === 'late' ? 'warn' : 'warn') // using warn for absent too
+
+            return `
+              <tr>
+                <td>${r.date}</td>
+                <td><span class="pill ${pillClass}">${r.status}</span></td>
+                <td>${r.subject || '-'}</td>
+              </tr>
+            `
+          }).join('')
+
+          tbody.innerHTML = html
+
+          document.getElementById('attPresent').textContent = presentCount
+          document.getElementById('attAbsent').textContent = absentCount
+
+          const total = presentCount + absentCount
+          const percent = total === 0 ? 0 : Math.round((presentCount / total) * 100)
+          document.getElementById('attPercent').textContent = percent + '%'
+
+        } catch (err) {
+          console.error(err)
+          tbody.innerHTML = `<tr><td colspan="3" style="color:red;text-align:center">Failed to load attendance</td></tr>`
+        }
+      }
+
+      // ── Load Student Profile ──────────────────────────────
+      async function loadStudentProfile() {
+        try {
+          const { data, error } = await supabase
+            .from('student')
+            .select('*')
+            .eq('profile_id', currentUserId)
+            .single()
+
+          if (!error && data) {
+            document.getElementById('studentWelcomeName').textContent = `Welcome, ${data.name || 'Student'}`
+            document.getElementById('studentRollNo').textContent = data.roll_number || '-'
+            document.getElementById('studentDept').textContent = data.department || '-'
+
+            document.getElementById('studentRollNoInput').value = data.roll_number || ''
             document.getElementById('studentName').value = data.name || ''
             document.getElementById('studentPhone').value = data.phone_num || ''
             document.getElementById('studentDob').value = data.date_of_birth || ''
             document.getElementById('studentGender').value = data.gender || ''
-            document.getElementById('studentRollNoInput').value = data.roll_number || ''
-            // Roll number is displayed top right
-            document.getElementById('studentRollNo').textContent = data.roll_number || 'N/A'
           }
         } catch (err) {
-          console.error('Error loading profile:', err)
+          console.error('[loadStudentProfile error]', err)
         }
       }
 
-      // Handle profile update
-      document.getElementById('saveProfileBtn')?.addEventListener('click', async () => {
-        if (!currentUserId) return
+      // Handle Profile Save
+      document.addEventListener('DOMContentLoaded', () => {
+        const profileForm = document.getElementById('profileForm')
+        if (profileForm) {
+          profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const btn = document.querySelector('#profileForm button[type="submit"]') || profileForm.querySelector('button')
+            const orig = btn.textContent
+            btn.textContent = 'Saving...'
+            btn.disabled = true
 
-        const saveBtn = document.getElementById('saveProfileBtn')
-        const originalText = saveBtn.textContent
-        saveBtn.textContent = 'Saving...'
-        saveBtn.disabled = true
+            try {
+              const { error } = await supabase
+                .from('student')
+                .update({
+                  roll_number: document.getElementById('studentRollNoInput').value || null,
+                  name: document.getElementById('studentName').value || null,
+                  phone_num: document.getElementById('studentPhone').value || null,
+                  date_of_birth: document.getElementById('studentDob').value || null,
+                  gender: document.getElementById('studentGender').value || null
+                })
+                .eq('profile_id', currentUserId)
 
-        const name = document.getElementById('studentName').value
-        const phone = document.getElementById('studentPhone').value
-        const dob = document.getElementById('studentDob').value
-        const gender = document.getElementById('studentGender').value
-        const roll_number = document.getElementById('studentRollNoInput').value
+              if (error) throw error
+              alert('Profile updated successfully!')
+              loadStudentProfile() // refresh
+            } catch (err) {
+              alert('Failed to update profile: ' + err.message)
+            } finally {
+              btn.textContent = orig
+              btn.disabled = false
+            }
+          })
+        }
+      })
 
-        try {
-          const updatePayload = {
-            name: name,
-            phone_num: phone,
-            date_of_birth: dob,
-            gender: gender,
-            roll_number: roll_number
-          }
-          console.log('Sending update to Supabase for profile_id:', currentUserId, 'Payload:', updatePayload)
-
-          const { data, error } = await supabase
-            .from('student')
-            .update(updatePayload)
-            .eq('profile_id', currentUserId)
-            .select() // Add select to get the updated row back and see if it actually matches any rows
-
-          console.log('Supabase update response:', { data, error })
-
-          if (error) {
-            console.error('Supabase returned an error:', error)
-            throw error
-          }
-
-          if (!data || data.length === 0) {
-            console.warn('Update succeeded but returned no rows. This usually means the profile_id was not found in the student table, or RLS policies blocked the update.')
-            throw new Error('No matching student record found to update, or permission denied.')
-          }
-
-          alert('Profile updated successfully!')
-        } catch (err) {
-          console.error('Error updating profile:', err)
-          alert('Failed to update profile: ' + err.message)
-        } finally {
-          saveBtn.textContent = originalText
-          saveBtn.disabled = false
+      // Load data once session is confirmed
+      checkSession().then(s => {
+        if (s) {
+          loadStudentProfile()
+          loadLeaveRequests()
+          loadAttendance()
         }
       })
     </script>
@@ -137,12 +245,12 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <h1>Welcome, Student</h1>
+          <h1 id="studentWelcomeName">Welcome, Student</h1>
           <p class="muted">Here’s your academic overview.</p>
         </div>
         <div class="topbar-actions">
           <span class="badge">Roll No: <span id="studentRollNo">Loading...</span></span>
-          <span class="badge">Class: CSIT</span>
+          <span class="badge">Program: <span id="studentDept">Loading...</span></span>
         </div>
       </header>
 
@@ -151,21 +259,21 @@
         <section id="attendance" class="card span-6">
           <div class="card-head">
             <h3>My Attendance</h3>
-            <p class="muted">Monthly summary</p>
+            <p class="muted">Overall summary</p>
           </div>
 
           <div class="stats">
             <div class="stat">
               <p class="muted">Present</p>
-              <h2>22</h2>
+              <h2 id="attPresent">0</h2>
             </div>
             <div class="stat">
               <p class="muted">Absent</p>
-              <h2>3</h2>
+              <h2 id="attAbsent">0</h2>
             </div>
             <div class="stat">
               <p class="muted">Percentage</p>
-              <h2>88%</h2>
+              <h2 id="attPercent">0%</h2>
             </div>
           </div>
 
@@ -178,21 +286,9 @@
                   <th>Subject</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="attTbody">
                 <tr>
-                  <td>2026-03-01</td>
-                  <td><span class="pill good">Present</span></td>
-                  <td>SAD</td>
-                </tr>
-                <tr>
-                  <td>2026-02-28</td>
-                  <td><span class="pill warn">Absent</span></td>
-                  <td>DAA</td>
-                </tr>
-                <tr>
-                  <td>2026-02-27</td>
-                  <td><span class="pill good">Present</span></td>
-                  <td>Multimedia</td>
+                  <td colspan="3" style="text-align:center">Loading attendance...</td>
                 </tr>
               </tbody>
             </table>
@@ -239,7 +335,7 @@
               </select>
             </div>
 
-            <button type="button" id="saveProfileBtn" class="btn btn-primary">Save Changes</button>
+            <button type="submit" id="saveProfileBtn" class="btn btn-primary">Save Changes</button>
           </form>
         </section>
 
@@ -262,22 +358,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td>DBMS</td>
-                  <td>Unit Test 2</td>
-                  <td>18/20</td>
-                  <td><span class="pill good">A</span></td>
-                </tr>
-                <tr>
-                  <td>OS</td>
-                  <td>Unit Test 2</td>
-                  <td>15/20</td>
-                  <td><span class="pill ok">B</span></td>
-                </tr>
-                <tr>
-                  <td>CN</td>
-                  <td>Unit Test 2</td>
-                  <td>16/20</td>
-                  <td><span class="pill ok">B+</span></td>
+                  <td colspan="4" style="text-align:center" class="muted">No recent marks found.</td>
                 </tr>
               </tbody>
             </table>
@@ -291,25 +372,47 @@
             <p class="muted">Submit leave request for approval</p>
           </div>
 
-          <form class="form">
+          <form class="form" id="leaveForm">
             <div class="form-row">
               <div class="field">
                 <label>From</label>
-                <input type="date" />
+                <input type="date" id="leaveFrom" required />
               </div>
               <div class="field">
                 <label>To</label>
-                <input type="date" />
+                <input type="date" id="leaveTo" required />
               </div>
             </div>
 
             <div class="field">
               <label>Reason</label>
-              <textarea rows="4" placeholder="Write reason..."></textarea>
+              <textarea id="leaveReason" rows="3" placeholder="Write reason..." required></textarea>
             </div>
 
-            <button type="button" class="btn btn-primary">Submit Request</button>
+            <button type="submit" id="leaveSubmitBtn" class="btn btn-primary">Submit Request</button>
           </form>
+
+          <!-- Past requests -->
+          <div style="margin-top:20px">
+            <h4 style="margin-bottom:10px;font-size:0.95rem">My Leave History</h4>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="leaveHistoryTbody">
+                  <tr>
+                    <td colspan="4" style="text-align:center">Loading...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </section>
     </main>

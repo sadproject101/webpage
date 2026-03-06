@@ -104,7 +104,36 @@
                     </div>
                 </div>
             </div>
-        </main>
+    </div>
+
+    <div class="grid" style="margin-top:24px">
+        <div class="card span-12">
+            <div class="card-head">
+                <h3>Agreed Leave Requests</h3>
+                <p class="muted">Requests approved by parents, awaiting admin final decision</p>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Student Name</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaveTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align:center">Loading requests...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    </main>
     </div>
 
     <!-- Student Form Modal -->
@@ -183,14 +212,43 @@
                         </select>
                     </div>
                 </div>
-                <div class="form-row" style="margin-bottom: 16px;">
-                    <div class="field">
-                        <label>Program / Department</label>
-                        <input type="text" id="cuProgram" placeholder="e.g. CSIT" />
+
+                <!-- Teacher and Student Fields -->
+                <div id="schoolFields" style="display: none;">
+                    <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border);" />
+                    <p class="muted small-note" style="margin-bottom: 12px;">School Information</p>
+                    <div class="form-row" style="margin-bottom: 16px;">
+                        <div class="field">
+                            <label>Program / Department</label>
+                            <input type="text" id="cuProgram" placeholder="e.g. CSIT" />
+                        </div>
+                        <div class="field">
+                            <label>Phone Number</label>
+                            <input type="number" id="cuPhone" />
+                        </div>
                     </div>
-                    <div class="field">
-                        <label>Phone Number</label>
-                        <input type="number" id="cuPhone" />
+                </div>
+
+                <!-- Student Only Fields -->
+                <div id="parentFields" style="display: none;">
+                    <hr style="margin: 16px 0; border: none; border-top: 1px solid var(--border);" />
+                    <p class="muted small-note" style="margin-bottom: 12px;">Parent Information (Optional)</p>
+                    <div class="form-row">
+                        <div class="field">
+                            <label>Parent Name</label>
+                            <input type="text" id="cuParentName" placeholder="e.g. Jane Doe" />
+                        </div>
+                        <div class="field">
+                            <label>Parent Email</label>
+                            <input type="email" id="cuParentEmail" placeholder="e.g. jane@example.com" />
+                        </div>
+                    </div>
+                    <div class="form-row" style="margin-bottom: 16px;">
+                        <div class="field">
+                            <label>Parent Phone</label>
+                            <input type="number" id="cuParentPhone" />
+                        </div>
+                        <div class="field"></div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 12px; justify-content: flex-end;">
@@ -205,12 +263,18 @@
         import { checkSession, signOut } from './auth.js'
         import { supabase } from './supabase.js'
 
+        let currentAdminId = null;
+
         document.addEventListener('DOMContentLoaded', async () => {
-            await checkSession()
+            const session = await checkSession()
+            if (session && session.user) {
+                currentAdminId = session.user.id;
+            }
 
             document.getElementById('logoutBtn').addEventListener('click', signOut)
 
-            const tbody = document.getElementById('studentTableBody')
+            const studentTableBody = document.getElementById('studentTableBody')
+            const leaveTableBody = document.getElementById('leaveTableBody')
             const modal = document.getElementById('studentModal')
             const form = document.getElementById('studentForm')
 
@@ -219,20 +283,20 @@
 
             // Load Students
             async function loadStudents() {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>'
+                studentTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>'
                 const { data, error } = await supabase.from('student').select('*').order('roll_number')
 
                 if (error) {
-                    tbody.innerHTML = `<tr><td colspan="6" class="error-text">Error: ${error.message}</td></tr>`
+                    studentTableBody.innerHTML = `<tr><td colspan="6" class="error-text">Error: ${error.message}</td></tr>`
                     return
                 }
 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No students found.</td></tr>'
+                    studentTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">No students found.</td></tr>'
                     return
                 }
 
-                tbody.innerHTML = ''
+                studentTableBody.innerHTML = ''
                 data.forEach((student, index) => {
                     const tr = document.createElement('tr')
                     tr.innerHTML = `
@@ -246,7 +310,7 @@
                             <button class="btn btn-small btn-outline del-btn" style="color:#ff5b5b; border-color:rgba(255,91,91,0.3)" data-index="${index}">Delete</button>
                         </td>
                     `
-                    tbody.appendChild(tr)
+                    studentTableBody.appendChild(tr)
                 })
 
                 // Attach event listeners to new buttons
@@ -355,9 +419,33 @@
             }
 
             // Create User Logic
+            const cuRoleSelect = document.getElementById('cuRole')
+            const schoolFields = document.getElementById('schoolFields')
+            const parentFields = document.getElementById('parentFields')
+
+            // Toggle visibility based on role
+            cuRoleSelect.addEventListener('change', (e) => {
+                const role = e.target.value
+                if (role === 'admin') {
+                    schoolFields.style.display = 'none'
+                    parentFields.style.display = 'none'
+                } else if (role === 'teacher') {
+                    schoolFields.style.display = 'block'
+                    parentFields.style.display = 'none'
+                } else if (role === 'student') {
+                    schoolFields.style.display = 'block'
+                    parentFields.style.display = 'block'
+                } else {
+                    schoolFields.style.display = 'none'
+                    parentFields.style.display = 'none'
+                }
+            })
+
             document.getElementById('openCreateUserModalBtn').addEventListener('click', (e) => {
                 e.preventDefault()
                 createUserForm.reset()
+                schoolFields.style.display = 'none'
+                parentFields.style.display = 'none'
                 createUserModal.classList.add('active')
             })
 
@@ -373,12 +461,15 @@
                 submitBtn.textContent = 'Creating User...'
 
                 const payload = {
+                    p_name: document.getElementById('cuName').value,
                     p_email: document.getElementById('cuEmail').value,
                     p_password: document.getElementById('cuPassword').value,
-                    p_name: document.getElementById('cuName').value,
                     p_role: document.getElementById('cuRole').value,
-                    p_program: document.getElementById('cuProgram').value || '',
-                    p_phone: parseInt(document.getElementById('cuPhone').value) || 0
+                    p_program: document.getElementById('cuProgram').value || null,
+                    p_phone: parseInt(document.getElementById('cuPhone').value) || null,
+                    p_parent_name: document.getElementById('cuParentName').value || null,
+                    p_parent_email: document.getElementById('cuParentEmail').value || null,
+                    p_parent_phone: parseInt(document.getElementById('cuParentPhone').value) || null
                 }
 
                 try {
@@ -436,19 +527,23 @@
                         // Simple split, assuming no commas inside the actual data values
                         const cols = rows[i].split(',').map(c => c.trim())
 
-                        if (cols.length < 6) {
+                        if (cols.length < 3) {
                             errCount++
-                            errMessages.push(`Row ${i + 1}: Missing columns. Found ${cols.length}, expected 6.`)
+                            errMessages.push(`Row ${i + 1}: Missing core columns. Found ${cols.length}, expected at least 3.`)
                             continue
                         }
 
+                        // Order: user_name[0], user_email[1], user_password[2], user_role[3], user_program[4], user_phone[5], parent_name[6], parent_email[7], parent_phone[8]
                         const payload = {
                             p_name: cols[0],
                             p_email: cols[1],
                             p_password: cols[2],
-                            p_role: cols[3].toLowerCase(),
-                            p_program: cols[4] || '',
-                            p_phone: parseInt(cols[5]) || 0
+                            p_role: (cols[3] || 'student').toLowerCase(),
+                            p_program: cols[4] || null,
+                            p_phone: parseInt(cols[5]) || null,
+                            p_parent_name: cols[6] || null,
+                            p_parent_email: cols[7] || null,
+                            p_parent_phone: parseInt(cols[8]) || null
                         }
 
                         try {
@@ -479,8 +574,70 @@
                 reader.readAsText(file)
             })
 
+            // ── Load Agreed Leave Requests ──────────────────────────────────
+            async function fetchAgreedLeaveRequests() {
+                try {
+                    // Fetch leave requests where status is 'agreed'
+                    const { data: requests, error } = await supabase
+                        .from('leave_request')
+                        .select('*, student:requester_id (name)')
+                        .eq('status', 'agreed')
+                        .order('start_date', { ascending: false })
+
+                    if (error) throw error
+
+                    renderLeaveRequests(requests)
+                } catch (err) {
+                    console.error('Error fetching leave requests:', err)
+                    leaveTableBody.innerHTML = `<tr><td colspan="6" style="color:red;text-align:center">Failed to load requests</td></tr>`
+                }
+            }
+
+            function renderLeaveRequests(requests) {
+                leaveTableBody.innerHTML = ''
+                if (!requests || requests.length === 0) {
+                    leaveTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center">No pending leave requests.</td></tr>'
+                    return
+                }
+
+                requests.forEach(req => {
+                    const tr = document.createElement('tr')
+                    tr.innerHTML = `
+                        <td>${req.student ? req.student.name : 'Unknown'}</td>
+                        <td>${req.start_date}</td>
+                        <td>${req.end_date}</td>
+                        <td>${req.reason}</td>
+                        <td><span class="pill warn">Agreed by Parent</span></td>
+                        <td class="actions">
+                            <button class="btn btn-small btn-primary admin-approve-btn" data-id="${req.id}">Approve</button>
+                            <button class="btn btn-small btn-outline admin-reject-btn" data-id="${req.id}">Reject</button>
+                        </td>
+                    `
+                    leaveTableBody.appendChild(tr)
+                })
+
+                document.querySelectorAll('.admin-approve-btn').forEach(btn => btn.addEventListener('click', () => updateLeaveStatus(btn.dataset.id, 'approved')))
+                document.querySelectorAll('.admin-reject-btn').forEach(btn => btn.addEventListener('click', () => updateLeaveStatus(btn.dataset.id, 'rejected')))
+            }
+
+            async function updateLeaveStatus(id, newStatus) {
+                try {
+                    const { error } = await supabase
+                        .from('leave_request')
+                        .update({ status: newStatus, approved_by: currentAdminId })
+                        .eq('id', id)
+
+                    if (error) throw error
+                    alert(`Request ${newStatus} successfully.`)
+                    fetchAgreedLeaveRequests() // refresh list
+                } catch (err) {
+                    alert('Error updating leave request: ' + err.message)
+                }
+            }
+
             // Initial load
             loadStudents()
+            fetchAgreedLeaveRequests()
         })
     </script>
 </body>

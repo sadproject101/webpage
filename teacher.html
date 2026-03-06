@@ -23,6 +23,7 @@
         <a class="nav-item active" href="#attendance">Attendance</a>
         <a class="nav-item" href="#grade">Grade</a>
         <a class="nav-item" href="#requests">Leave Requests</a>
+        <a class="nav-item" href="#profile">My Profile</a>
       </nav>
 
       <div class="sidebar-footer">
@@ -32,15 +33,59 @@
 
     <script type="module">
       import { checkSession, signOut } from './auth.js'
-      import { supabase } from './supabase.js'
+      import { supabase, supabaseUrl, supabaseAnonKey } from './supabase.js'
 
       let currentTeacherId = null
+      let currentTeacherEmail = null
       let currentStudents = []
+      let teacherSubjectValue = null   // set after profile loads
+      let statusEnumValues = []        // fetched from OpenAPI
+
+      const TODAY = new Date().toISOString().split('T')[0]  // YYYY-MM-DD
+
+      // ── Fetch status enum from Supabase OpenAPI ───────────────────
+      async function loadStatusEnum() {
+        try {
+          const resp = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`)
+          const spec = await resp.json()
+          const statusProp = spec.definitions?.attendance?.properties?.status
+          if (statusProp?.enum && statusProp.enum.length > 0) {
+            statusEnumValues = statusProp.enum
+          }
+        } catch (err) {
+          console.warn('Could not load status enum, using fallback:', err)
+          statusEnumValues = ['present', 'absent', 'late', 'excused']
+        }
+      }
+
+      // ── Fetch subject enum (for My Profile dropdown) ──────────────
+      async function loadSubjectEnums() {
+        const select = document.getElementById('teacherSubject')
+        try {
+          const resp = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`)
+          const spec = await resp.json()
+          const subjectProp = spec.definitions?.teacher?.properties?.subject
+          if (subjectProp?.enum && subjectProp.enum.length > 0) {
+            select.innerHTML = '<option value="">Select Subject</option>'
+            subjectProp.enum.forEach(val => {
+              const opt = document.createElement('option')
+              opt.value = val
+              opt.textContent = val.replace(/\b\w/g, c => c.toUpperCase())
+              select.appendChild(opt)
+            })
+          }
+        } catch (err) {
+          console.warn('Could not load subject enum:', err)
+        }
+      }
 
       // Check session on load
-      checkSession().then(session => {
+      checkSession().then(async session => {
         if (session && session.user) {
           currentTeacherId = session.user.id
+          currentTeacherEmail = session.user.email
+          await Promise.all([loadStatusEnum(), loadSubjectEnums()])
+          await loadTeacherProfile(session.user.id)   // sets teacherSubjectValue
           initTeacherDashboard()
         }
       })
@@ -51,151 +96,207 @@
       })
 
       async function initTeacherDashboard() {
-        // Set today's date as default
-        document.getElementById('attendanceDate').valueAsDate = new Date()
+        const tbody = document.getElementById('attendanceTbody')
+        const saveBtn = document.getElementById('saveAttendanceBtn')
+        const alreadyMsg = document.getElementById('attendanceAlreadyTaken')
+        const formArea = document.getElementById('attendanceFormArea')
 
-        // 1. Fetch unique programs to populate the dropdown
-        try {
-          // We can get unique programs by querying auth.users user_metadata by using an RPC,
-          // OR simply querying the `student` table if it has a program column.
-          // Since `student` table currently doesn't have a program column (based on previous schema), 
-          // we will rely on a generic list for now, or you can add them manually to the DB.
-          // For now, let's hardcode the common ones or fetch from a 'programs' table if you make one.
-          const programs = ['CSIT', 'BCA', 'BIM', 'BBA']
-          const programSelect = document.getElementById('attendanceProgram')
+        // Show today's date (read-only)
+        document.getElementById('attendanceDateDisplay').value = TODAY
 
-          programs.forEach(prog => {
-            const opt = document.createElement('option')
-            opt.value = opt.textContent = prog
-            programSelect.appendChild(opt)
-          })
-
-        } catch (err) {
-          console.error("Error loading programs:", err)
+        // Show teacher's subject (read-only)
+        const subjectDisplay = document.getElementById('attendanceSubjectDisplay')
+        if (teacherSubjectValue) {
+          subjectDisplay.value = teacherSubjectValue.replace(/\b\w/g, c => c.toUpperCase())
+        } else {
+          subjectDisplay.value = 'Not set — update your profile first'
+          subjectDisplay.style.color = '#ff5b5b'
         }
 
-        // 2. Listen for Class selection to load students
-        document.getElementById('attendanceProgram').addEventListener('change', async (e) => {
-          const program = e.target.value
-          const tbody = document.getElementById('attendanceTbody')
-          const saveBtn = document.getElementById('saveAttendanceBtn')
+        // ── Check if attendance already recorded today by this teacher ─
+        const { data: existing, error: chkErr } = await supabase
+          .from('attendance')
+          .select('id')
+          .eq('recorded_by', currentTeacherId)
+          .eq('date', TODAY)
+          .limit(1)
 
-          if (!program) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Select a class to load students</td></tr>'
-            saveBtn.disabled = true
-            currentStudents = []
+        if (existing && existing.length > 0) {
+          alreadyMsg.style.display = 'block'
+          formArea.style.display = 'none'
+          return
+        }
+
+        // ── Load all students ──────────────────────────────────────────
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Loading students...</td></tr>'
+
+        try {
+          const { data, error } = await supabase
+            .from('student')
+            .select('*')
+            .order('roll_number')
+
+          if (error) throw error
+
+          currentStudents = data || []
+
+          if (currentStudents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No students found.</td></tr>'
             return
           }
 
-          tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Loading students...</td></tr>'
-          saveBtn.disabled = true
+          // Build status options HTML from fetched enum values
+          const statusOptions = statusEnumValues.length
+            ? statusEnumValues.map(v =>
+              `<option value="${v}">${v.replace(/\b\w/g, c => c.toUpperCase())}</option>`
+            ).join('')
+            : '<option value="present">Present</option><option value="absent">Absent</option>'
 
-          try {
-            // Ideally your `student` table needs a `program` column to filter by. 
-            // If it doesn't have one yet, we will just fetch ALL students for this demo.
-            // *Tip: Add a `program` column to `public.student` in Supabase to make this filter work completely!*
-            const { data, error } = await supabase
-              .from('student')
-              .select('*')
-              .order('roll_number')
+          tbody.innerHTML = ''
+          currentStudents.forEach(student => {
+            const tr = document.createElement('tr')
+            tr.innerHTML = `
+              <td>${student.roll_number || '-'}</td>
+              <td>${student.name || 'Unnamed'}</td>
+              <td>
+                <select class="attendance-select" data-id="${student.profile_id}">
+                  ${statusOptions}
+                </select>
+              </td>
+              <td>
+                <input type="text" class="attendance-remarks"
+                  placeholder="Optional remark" style="min-width:140px" />
+              </td>
+            `
+            tbody.appendChild(tr)
+          })
 
-            if (error) throw error
+          saveBtn.disabled = false
 
-            currentStudents = data || []
+        } catch (err) {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#ff5b5b">Error: ${err.message}</td></tr>`
+        }
 
-            if (currentStudents.length === 0) {
-              tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">No students found.</td></tr>'
-              return
-            }
-
-            // Render students
-            tbody.innerHTML = ''
-            currentStudents.forEach((student, index) => {
-              const tr = document.createElement('tr')
-              tr.innerHTML = `
-                <td>${student.roll_number || '-'}</td>
-                <td>${student.name || 'Unnamed'}</td>
-                <td>
-                  <select class="attendance-select" data-id="${student.profile_id}">
-                    <option value="present">Present</option>
-                    <option value="absent">Absent</option>
-                    <option value="late">Late</option>
-                    <option value="excused">Excused</option>
-                  </select>
-                </td>
-              `
-              tbody.appendChild(tr)
-            })
-
-            saveBtn.disabled = false
-
-          } catch (err) {
-            tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: red;">Error: ${err.message}</td></tr>`
-          }
-        })
-
-        // 3. Handle Form Submission
+        // ── Handle Form Submission ─────────────────────────────────────
         document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
           e.preventDefault()
-
           if (currentStudents.length === 0) return
-
-          const date = document.getElementById('attendanceDate').value
-          const remarks = document.getElementById('attendanceRemarks').value
-          const saveBtn = document.getElementById('saveAttendanceBtn')
 
           saveBtn.textContent = 'Saving...'
           saveBtn.disabled = true
 
           try {
-            // Gather all the select dropdowns
             const selects = document.querySelectorAll('.attendance-select')
+            const remarkInputs = document.querySelectorAll('.attendance-remarks')
 
-            // Build the array of inserts
-            const payload = Array.from(selects).map(select => {
-              return {
+            const payload = Array.from(selects)
+              .map((select, i) => ({
                 student_id: select.dataset.id,
-                date: date,
+                date: TODAY,
                 recorded_by: currentTeacherId,
-                remarks: remarks || null,
+                subject: teacherSubjectValue || null,
+                remarks: remarkInputs[i]?.value || null,
                 status: select.value
-              }
-            })
+              }))
+              .filter(p => p.student_id && p.student_id !== 'undefined')
 
-            // Validate: remove any where student_id is null (e.g. students without properly linked accounts)
-            const validPayload = payload.filter(p => p.student_id !== "undefined" && p.student_id !== null && p.student_id !== "")
+            if (payload.length === 0)
+              throw new Error('No valid student records found.')
 
-            if (validPayload.length === 0) {
-              throw new Error("No valid student profiles to save attendance for. Make sure students have profile_ids.")
-            }
-
-            const { error } = await supabase.from('attendance').insert(validPayload)
-
+            const { error } = await supabase.from('attendance').insert(payload)
             if (error) throw error
 
-            alert(`Successfully saved attendance for ${validPayload.length} students!`)
+            alert(`Attendance saved for ${payload.length} students!`)
+            // Show the "already taken" banner and hide the form
+            alreadyMsg.style.display = 'block'
+            formArea.style.display = 'none'
 
           } catch (err) {
-            console.error("Save error:", err)
-            alert("Error saving attendance: " + err.message)
+            console.error('Save error:', err)
+            alert('Error saving attendance: ' + err.message)
           } finally {
             saveBtn.textContent = 'Save Attendance'
             saveBtn.disabled = false
           }
         })
-
       }
+
+      // ── Teacher Profile ──────────────────────────────────────────
+      async function loadTeacherProfile(userId) {
+        try {
+          const { data, error } = await supabase
+            .from('teacher')
+            .select('subject, phone_number')
+            .eq('teacher_id', userId)
+            .maybeSingle()
+
+          if (error) { console.warn('Could not load teacher profile:', error.message); return }
+
+          let subj = ''
+          if (data) {
+            subj = data.subject || ''
+            teacherSubjectValue = subj   // used by attendance
+            document.getElementById('teacherSubject').value = subj
+            document.getElementById('teacherPhone').value = data.phone_number || ''
+          }
+
+          document.getElementById('teacherEmailBadge').textContent = currentTeacherEmail || 'Teacher'
+          document.getElementById('teacherSubjectBadge').textContent = subj ? `Subject: ${subj}` : 'Subject: Not Set'
+
+        } catch (err) {
+          console.error('Error loading teacher profile:', err)
+        }
+      }
+
+      document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+        if (!currentTeacherId) return
+
+        const btn = document.getElementById('saveProfileBtn')
+        const orig = btn.textContent
+        btn.textContent = 'Saving...'
+        btn.disabled = true
+
+        const subject = document.getElementById('teacherSubject').value
+        const phone_number = document.getElementById('teacherPhone').value || null
+
+        try {
+          // Try update first
+          const { data: updated, error: updErr } = await supabase
+            .from('teacher')
+            .update({ subject, phone_number })
+            .eq('teacher_id', currentTeacherId)
+            .select()
+
+          if (updErr) throw updErr
+
+          // If no row existed yet, insert one
+          if (!updated || updated.length === 0) {
+            const { error: insErr } = await supabase
+              .from('teacher')
+              .insert([{ teacher_id: currentTeacherId, subject, phone_number }])
+            if (insErr) throw insErr
+          }
+
+          alert('Profile saved successfully!')
+        } catch (err) {
+          console.error('Error saving profile:', err)
+          alert('Failed to save profile: ' + err.message)
+        } finally {
+          btn.textContent = orig
+          btn.disabled = false
+        }
+      })
     </script>
 
     <main class="main">
       <header class="topbar">
         <div>
-          <h1>Welcome, Teacher</h1>
-          <p class="muted">Manage attendance, grades, and leave requests.</p>
+          <h1 id="teacherWelcomeName">Welcome, Teacher</h1>
+          <p class="muted">Manage attendance, grades, and profile.</p>
         </div>
         <div class="topbar-actions">
-          <span class="badge">Subject: Multimedia</span>
-          <span class="badge">Class: CSIT</span>
+          <span class="badge" id="teacherEmailBadge">Loading...</span>
+          <span class="badge" id="teacherSubjectBadge">Subject: Loading...</span>
         </div>
       </header>
 
@@ -204,125 +305,95 @@
         <section id="attendance" class="card span-6">
           <div class="card-head">
             <h3>Attendance</h3>
-            <p class="muted">Mark student attendance</p>
+            <p class="muted">Mark student attendance for today</p>
           </div>
 
-          <form class="form" id="attendanceForm">
+          <!-- Info row: date + subject (read-only) -->
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="field">
+              <label>Date</label>
+              <input type="text" id="attendanceDateDisplay" readonly
+                style="background:rgba(255,255,255,0.03);cursor:default" />
+            </div>
+            <div class="field">
+              <label>Subject</label>
+              <input type="text" id="attendanceSubjectDisplay" readonly
+                style="background:rgba(255,255,255,0.03);cursor:default" />
+            </div>
+          </div>
+
+          <!-- Already-taken banner (hidden by default) -->
+          <div id="attendanceAlreadyTaken" style="display:none;padding:14px;border-radius:12px;
+               background:rgba(91,250,170,0.1);border:1px solid rgba(91,250,170,0.25);margin-bottom:12px;">
+            ✅ Attendance has already been recorded for today.
+          </div>
+
+          <!-- Form area (shown when not yet taken) -->
+          <div id="attendanceFormArea">
+            <form class="form" id="attendanceForm">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Roll No</th>
+                      <th>Name</th>
+                      <th>Status</th>
+                      <th>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attendanceTbody">
+                    <tr>
+                      <td colspan="4" style="text-align:center">Loading students...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <button type="submit" id="saveAttendanceBtn" class="btn btn-primary" disabled style="margin-top:12px">Save
+                Attendance</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- Grade -->
+        <section id="grade" class="card span-6">
+          <div class="card-head">
+            <h3>Grade</h3>
+            <p class="muted">Update marks and grades</p>
+          </div>
+
+          <div class="form-row" style="margin-top: 1rem;">
+            <p class="muted">The Grading module is under construction and will be available soon.</p>
+          </div>
+        </section>
+
+        <!-- Profile -->
+        <section id="profile" class="card span-12">
+          <div class="card-head">
+            <h3>My Profile</h3>
+            <p class="muted">Update your subject and contact info</p>
+          </div>
+
+          <div class="form" style="max-width: 520px;">
             <div class="form-row">
               <div class="field">
-                <label>Date</label>
-                <input type="date" id="attendanceDate" required />
-              </div>
-              <div class="field">
-                <label>Class/Program</label>
-                <select id="attendanceProgram" required>
-                  <option value="">Select Class...</option>
-                  <!-- Populated dynamically -->
+                <label>Subject</label>
+                <select id="teacherSubject">
+                  <option value="">Loading subjects...</option>
                 </select>
               </div>
               <div class="field">
-                <label>Remarks / Lecture</label>
-                <input type="text" id="attendanceRemarks" placeholder="e.g., Lecture 3" />
+                <label>Phone Number</label>
+                <input type="number" id="teacherPhone" placeholder="Enter phone number" />
               </div>
             </div>
-
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Roll No</th>
-                    <th>Name</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="attendanceTbody">
-                  <tr>
-                    <td colspan="3" style="text-align: center;">Select a class to load students</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div>
+              <button type="button" id="saveProfileBtn" class="btn btn-primary">Save Profile</button>
             </div>
-
-            <button type="submit" id="saveAttendanceBtn" class="btn btn-primary" disabled>Save Attendance</button>
-          </form </section>
-
-          <!-- Grade -->
-          <section id="grade" class="card span-6">
-            <div class="card-head">
-              <h3>Grade</h3>
-              <p class="muted">Update marks and grades</p>
-            </div>
-
-            <form class="form">
-              <div class="form-row">
-                <div class="field">
-                  <label>Student Roll No</label>
-                  <input type="text" placeholder="e.g., 21" />
-                </div>
-                <div class="field">
-                  <label>Test Name</label>
-                  <input type="text" placeholder="e.g., Unit Test 2" />
-                </div>
-              </div>
-
-              <div class="form-row">
-                <div class="field">
-                  <label>Marks</label>
-                  <input type="text" placeholder="e.g., 18/20" />
-                </div>
-                <div class="field">
-                  <label>Grade</label>
-                  <select>
-                    <option>A</option>
-                    <option>B+</option>
-                    <option>B</option>
-                    <option>C</option>
-                  </select>
-                </div>
-              </div>
-
-              <button type="button" class="btn btn-primary">Save Grade</button>
-            </form>
-          </section>
-
-          <!-- Requests -->
-          <section id="requests" class="card span-12">
-            <div class="card-head">
-              <h3>Leave Requests</h3>
-              <p class="muted">Approve or reject pending leave</p>
-            </div>
-
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Roll No</th>
-                    <th>Name</th>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>21</td>
-                    <td>Rahul</td>
-                    <td>2026-03-05</td>
-                    <td>2026-03-06</td>
-                    <td>Medical</td>
-                    <td><span class="pill warn">Pending</span></td>
-                    <td class="actions">
-                      <button type="button" class="btn btn-small">Approve</button>
-                      <button type="button" class="btn btn-small btn-outline">Reject</button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </section>
+          </div>
         </section>
+
+      </section>
     </main>
   </div>
 </body>
