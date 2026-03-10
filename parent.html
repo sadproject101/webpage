@@ -2,393 +2,482 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SMS | Parent Dashboard</title>
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS | Parent Dashboard</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="brand">
+
+<div class="app">
+
+<!-- ================= SIDEBAR ================= -->
+
+<aside class="sidebar">
+
+    <div class="brand">
         <div class="logo">SMS</div>
         <div>
-          <h2>Parent</h2>
-          <p class="muted">Dashboard</p>
+            <h2>Parent</h2>
+            <p class="muted">Dashboard</p>
         </div>
-      </div>
+    </div>
 
-      <nav class="nav">
-        <a class="nav-item active" href="#attendance">View Attendance</a>
-        <a class="nav-item" href="#profile">Update Profile</a>
-        <a class="nav-item" href="#marks">View Recent Marks</a>
-        <a class="nav-item" href="#leave">Verify Leave</a>
-      </nav>
+    <nav class="nav">
 
-      <div class="sidebar-footer">
+        <a class="nav-item active" data-section="attendance">
+            View Attendance
+        </a>
+
+        <a class="nav-item" data-section="profile">
+            Update Profile
+        </a>
+
+        <a class="nav-item" data-section="marks">
+            View Recent Marks
+        </a>
+
+        <a class="nav-item" data-section="leave">
+            Verify Leave
+        </a>
+
+    </nav>
+
+    <div class="sidebar-footer">
         <button class="btn btn-ghost" id="logoutBtn">Logout</button>
-      </div>
-    </aside>
+    </div>
 
-    <script type="module">
-      // Check session on load
-      import { checkSession, signOut } from './auth.js'
-      import { supabase } from './supabase.js'
+</aside>
 
-      let currentParentId = null
-      let currentParentEmail = null
 
-      checkSession().then(async session => {
-        if (session && session.user) {
-          currentParentId = session.user.id
-          currentParentEmail = session.user.email
-          await loadParentProfile()
-          await loadParentLeaveRequests()
-          await loadParentAttendance()
-        }
-      }).catch(err => console.error(err))
+<!-- ================= MAIN ================= -->
 
-      // Handle logout
-      document.getElementById('logoutBtn').addEventListener('click', () => {
-        signOut()
-      })
+<main class="main">
 
-      async function loadParentLeaveRequests() {
-        const tbody = document.getElementById('leaveRequestsTbody')
-        if (!tbody || !currentParentEmail) return
+<header class="topbar">
 
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">Loading children and requests...</td></tr>'
+    <div>
+        <h1 id="parentWelcomeName">Welcome, Parent</h1>
+        <p class="muted">Monitor student performance</p>
+    </div>
 
-        try {
-          // 1. Find all students belonging to this parent
-          // The student table has a 'parent' column storing the parent_id (UUID)
-          console.log('[DEBUG] Searching `student` table for currentParentId:', currentParentId)
+    <div class="topbar-actions">
+        <span class="badge" id="parentEmailBadge">Loading...</span>
+    </div>
 
-          const { data: students, error: studErr } = await supabase
+</header>
+
+
+<section class="grid">
+
+
+<!-- ================= ATTENDANCE ================= -->
+
+<section id="attendance" class="card span-12 dashboard-section">
+
+    <div class="card-head">
+        <h3>Attendance Overview</h3>
+        <p class="muted">Attendance summary for your children</p>
+    </div>
+
+    <div class="table-wrap">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Student Name</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Percentage</th>
+                </tr>
+            </thead>
+
+            <tbody id="parentAttendanceTbody">
+                <tr>
+                    <td colspan="4" style="text-align:center">
+                        Loading attendance...
+                    </td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+
+<!-- ================= PROFILE ================= -->
+
+<section id="profile" class="card span-12 dashboard-section">
+
+    <div class="card-head">
+        <h3>Update Profile</h3>
+    </div>
+
+    <form class="form">
+
+        <input id="parentNameInput" placeholder="Parent Name">
+
+        <input id="parentPhoneInput" placeholder="Phone">
+
+        <input id="parentEmailInput" readonly>
+
+        <button class="btn btn-primary">Save</button>
+
+    </form>
+
+</section>
+
+
+<!-- ================= MARKS ================= -->
+
+<section id="marks" class="card span-12 dashboard-section">
+
+    <div class="card-head">
+        <h3>Recent Marks</h3>
+    </div>
+
+    <p class="muted">No marks available</p>
+
+</section>
+
+
+<!-- ================= LEAVE ================= -->
+
+<section id="leave" class="card span-12 dashboard-section">
+
+    <div class="card-head">
+        <h3>Verify Leave Requests</h3>
+    </div>
+
+    <div class="table-wrap">
+
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+
+            <tbody id="leaveRequestsTbody">
+                <tr>
+                    <td colspan="6">Loading...</td>
+                </tr>
+            </tbody>
+
+        </table>
+
+    </div>
+
+</section>
+
+</section>
+
+</main>
+
+</div>
+
+
+<!-- ================= SCRIPT ================= -->
+
+<script type="module">
+
+import { checkSession, signOut } from './auth.js'
+import { supabase } from './supabase.js'
+
+let currentParentId = null
+let currentParentEmail = null
+
+
+/* ================= SESSION ================= */
+
+checkSession().then(async session => {
+
+    if (session && session.user) {
+
+        currentParentId = session.user.id
+        currentParentEmail = session.user.email
+
+        await loadParentProfile()
+        await loadParentLeaveRequests()
+        await loadParentAttendance()
+
+    }
+
+})
+
+
+/* ================= LOGOUT ================= */
+
+document
+.getElementById('logoutBtn')
+.addEventListener('click', () => {
+    signOut()
+})
+
+
+/* ================= DASHBOARD NAVIGATION ================= */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const navItems = document.querySelectorAll(".nav-item")
+    const sections = document.querySelectorAll(".dashboard-section")
+
+    function showSection(id) {
+
+        sections.forEach(section => {
+            section.style.display = "none"
+        })
+
+        document.getElementById(id).style.display = "flex"
+
+        navItems.forEach(i => i.classList.remove("active"))
+
+        document
+            .querySelector(`[data-section="${id}"]`)
+            .classList.add("active")
+    }
+
+    navItems.forEach(item => {
+
+        item.addEventListener("click", () => {
+            showSection(item.dataset.section)
+        })
+
+    })
+
+    showSection("attendance")
+
+})
+
+
+/* ================= LEAVE REQUESTS ================= */
+
+async function loadParentLeaveRequests() {
+
+    const tbody = document.getElementById('leaveRequestsTbody')
+
+    if (!tbody || !currentParentEmail) return
+
+    tbody.innerHTML =
+        '<tr><td colspan="6" style="text-align:center">Loading...</td></tr>'
+
+    try {
+
+        const { data: students, error: studErr } = await supabase
             .from('student')
-            .select('profile_id, name')
+            .select('profile_id,name')
             .eq('parent', currentParentId)
 
-          if (studErr) {
-            console.error('[DEBUG] Student lookup error:', studErr)
-            throw studErr
-          }
-          console.log('[DEBUG] Students found (count):', students ? students.length : 0)
-          console.log('[DEBUG] Full students array:', students)
+        if (studErr) throw studErr
 
-          // Debug column check if empty
-          if (!students || students.length === 0) {
-            const { data: colCheck } = await supabase.from('student').select('*').limit(1)
-            if (colCheck && colCheck.length > 0) {
-              console.log('[DEBUG] Actual columns in student table:', Object.keys(colCheck[0]))
-            }
-          }
+        if (!students || students.length === 0) {
 
-          if (!students || students.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No linked children found.</td></tr>'
+            tbody.innerHTML =
+                '<tr><td colspan="6" style="text-align:center">No linked children</td></tr>'
             return
-          }
+        }
 
-          const studentIds = students.map(s => s.profile_id)
-          const studentMap = Object.fromEntries(students.map(s => [s.profile_id, s.name]))
+        const studentIds = students.map(s => s.profile_id)
 
-          // 2. Fetch leave requests specifically for these children where status is 'applied'
-          const { data: requests, error: reqErr } = await supabase
+        const studentMap =
+            Object.fromEntries(students.map(s => [s.profile_id, s.name]))
+
+        const { data: requests, error: reqErr } = await supabase
             .from('leave_request')
             .select('*')
             .in('requester_id', studentIds)
             .eq('status', 'applied')
-            .order('start_date', { ascending: false })
 
-          if (reqErr) throw reqErr
+        if (reqErr) throw reqErr
 
-          if (!requests || requests.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No pending leave requests.</td></tr>'
+        if (!requests || requests.length === 0) {
+
+            tbody.innerHTML =
+                '<tr><td colspan="6">No pending requests</td></tr>'
             return
-          }
-
-          tbody.innerHTML = requests.map(req => `
-            <tr>
-              <td>${studentMap[req.requester_id] || 'Unknown'}</td>
-              <td>${req.start_date}</td>
-              <td>${req.end_date}</td>
-              <td>${req.reason}</td>
-              <td><span class="pill warn">Applied</span></td>
-              <td class="actions">
-                <button type="button" class="btn btn-small btn-primary agree-btn" data-id="${req.id}">Agree</button>
-                <button type="button" class="btn btn-small btn-outline reject-btn" data-id="${req.id}">Reject</button>
-              </td>
-            </tr>
-          `).join('')
-
-          document.querySelectorAll('.agree-btn').forEach(btn => btn.addEventListener('click', () => handleLeaveStatus(btn.dataset.id, 'agreed')))
-          document.querySelectorAll('.reject-btn').forEach(btn => btn.addEventListener('click', () => handleLeaveStatus(btn.dataset.id, 'rejected')))
-
-        } catch (err) {
-          console.error(err)
-          tbody.innerHTML = `<tr><td colspan="6" style="color:red;text-align:center">Error loading requests: ${err.message}</td></tr>`
         }
-      }
 
-      async function handleLeaveStatus(requestId, newStatus) {
-        try {
-          const { error } = await supabase
-            .from('leave_request')
-            .update({ status: newStatus })
-            .eq('id', requestId)
+        tbody.innerHTML = requests.map(req => `
 
-          if (error) throw error
+        <tr>
+            <td>${studentMap[req.requester_id]}</td>
+            <td>${req.start_date}</td>
+            <td>${req.end_date}</td>
+            <td>${req.reason}</td>
 
-          alert(`Leave request marked as ${newStatus}.`)
-          loadParentLeaveRequests() // refresh
-        } catch (err) {
-          alert('Error updating status: ' + err.message)
-        }
-      }
+            <td>
+                <span class="pill warn">Applied</span>
+            </td>
 
-      // ── Load Parent Attendance Overview ──────────────────────────────
-      async function loadParentAttendance() {
-        const tbody = document.getElementById('parentAttendanceTbody')
-        if (!tbody || !currentParentId) return
+            <td class="actions">
 
-        try {
-          // 1. Get Children
-          const { data: students, error: studErr } = await supabase
-            .from('student')
-            .select('profile_id, name')
-            .eq('parent', currentParentId)
+                <button class="btn btn-small btn-primary agree-btn"
+                    data-id="${req.id}">
+                    Agree
+                </button>
 
-          if (studErr) throw studErr
+                <button class="btn btn-small btn-outline reject-btn"
+                    data-id="${req.id}">
+                    Reject
+                </button>
 
-          if (!students || students.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No linked children found.</td></tr>'
-            return
-          }
+            </td>
+        </tr>
 
-          const studentIds = students.map(s => s.profile_id)
-          const studentMap = Object.fromEntries(students.map(s => [s.profile_id, s.name]))
+        `).join('')
 
-          // 2. Get Attendance
-          const { data: attendance, error: attErr } = await supabase
-            .from('attendance')
-            .select('student_id, status')
-            .in('student_id', studentIds)
+        document.querySelectorAll('.agree-btn')
+            .forEach(btn =>
+                btn.addEventListener("click",
+                    () => handleLeaveStatus(btn.dataset.id, 'agreed')
+                )
+            )
 
-          if (attErr) throw attErr
+        document.querySelectorAll('.reject-btn')
+            .forEach(btn =>
+                btn.addEventListener("click",
+                    () => handleLeaveStatus(btn.dataset.id, 'rejected')
+                )
+            )
 
-          // 3. Aggregate
-          const stats = {}
-          studentIds.forEach(id => { stats[id] = { present: 0, absent: 0 } })
+    }
+    catch (err) {
 
-          if (attendance) {
-            attendance.forEach(r => {
-              const st = r.status.toLowerCase()
-              if (st === 'present') stats[r.student_id].present++
-              if (st === 'absent' || st === 'late') stats[r.student_id].absent++
-            })
-          }
+        tbody.innerHTML =
+            `<tr><td colspan="6">${err.message}</td></tr>`
 
-          // 4. Render
-          const html = studentIds.map(id => {
-            const p = stats[id].present
-            const a = stats[id].absent
-            const t = p + a
-            const pct = t === 0 ? 0 : Math.round((p / t) * 100)
-            return `
-              <tr>
-                <td>${studentMap[id] || 'Unknown'}</td>
-                <td>${p}</td>
-                <td>${a}</td>
-                <td><span class="pill ${pct >= 75 ? 'good' : (pct >= 50 ? 'ok' : 'warn')}">${pct}%</span></td>
-              </tr>
-            `
-          }).join('')
+    }
 
-          tbody.innerHTML = html
+}
 
-        } catch (err) {
-          console.error('[loadParentAttendance error]', err)
-          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:red;">Error loading attendance</td></tr>'
-        }
-      }
-      // ── Load Parent Profile ──────────────────────────────
-      async function loadParentProfile() {
-        try {
-          const { data, error } = await supabase
-            .from('parents')
-            .select('parent_name, parentsemailaddress, parents_phonenumber')
-            .eq('parents_id', currentParentId)
-            .single()
 
-          if (!error && data) {
-            document.getElementById('parentWelcomeName').textContent = `Welcome, ${data.parent_name || 'Parent'}`
-            document.getElementById('parentEmailBadge').textContent = data.parentsemailaddress || currentParentEmail
+async function handleLeaveStatus(requestId, newStatus) {
 
-            document.getElementById('parentNameInput').value = data.parent_name || ''
-            document.getElementById('parentPhoneInput').value = data.parents_phonenumber || ''
-            document.getElementById('parentEmailInput').value = data.parentsemailaddress || ''
-          } else {
-            document.getElementById('parentEmailBadge').textContent = currentParentEmail || 'Parent'
-          }
-        } catch (err) {
-          console.error('[loadParentProfile error]', err)
-        }
-      }
+    const { error } = await supabase
+        .from('leave_request')
+        .update({ status: newStatus })
+        .eq('id', requestId)
 
-      // Handle Profile Save
-      document.addEventListener('DOMContentLoaded', () => {
-        const profileForm = document.getElementById('parentProfileForm')
-        if (profileForm) {
-          profileForm.addEventListener('submit', async (e) => {
-            e.preventDefault()
-            const btn = document.getElementById('saveParentProfileBtn')
-            const orig = btn.textContent
-            btn.textContent = 'Saving...'
-            btn.disabled = true
+    if (error) alert(error.message)
 
-            try {
-              const { error } = await supabase
-                .from('parents')
-                .upsert({
-                  parents_id: currentParentId,
-                  parent_name: document.getElementById('parentNameInput').value,
-                  parents_phonenumber: document.getElementById('parentPhoneInput').value,
-                  parentsemailaddress: document.getElementById('parentEmailInput').value
-                })
+    else {
+        alert(`Leave request ${newStatus}`)
+        loadParentLeaveRequests()
+    }
 
-              if (error) throw error
-              alert('Profile updated successfully!')
-              loadParentProfile() // refresh topbar
-            } catch (err) {
-              alert('Failed to update profile: ' + err.message)
-            } finally {
-              btn.textContent = orig
-              btn.disabled = false
-            }
-          })
-        }
-      })
+}
 
-    </script>
 
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1 id="parentWelcomeName">Welcome, Parent</h1>
-          <p class="muted">Monitor student performance and requests.</p>
-        </div>
-        <div class="topbar-actions">
-          <span class="badge" id="parentEmailBadge">Loading...</span>
-        </div>
-      </header>
+/* ================= ATTENDANCE ================= */
 
-      <section class="grid">
-        <section id="attendance" class="card span-12">
-          <div class="card-head">
-            <h3>Attendance Overview</h3>
-            <p class="muted">Attendance summary for all linked children</p>
-          </div>
+async function loadParentAttendance() {
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Student Name</th>
-                  <th>Present Days</th>
-                  <th>Absent Days</th>
-                  <th>Percentage</th>
-                </tr>
-              </thead>
-              <tbody id="parentAttendanceTbody">
-                <tr>
-                  <td colspan="4" style="text-align:center">Loading attendance...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+    const tbody =
+        document.getElementById('parentAttendanceTbody')
 
-        <section id="profile" class="card span-6">
-          <div class="card-head">
-            <h3>Update Profile</h3>
-            <p class="muted">Parent contact details</p>
-          </div>
+    if (!tbody || !currentParentId) return
 
-          <form class="form" id="parentProfileForm">
-            <div class="form-row">
-              <div class="field">
-                <label>Parent Name</label>
-                <input type="text" id="parentNameInput" placeholder="Enter name" />
-              </div>
-              <div class="field">
-                <label>Phone</label>
-                <input type="tel" id="parentPhoneInput" placeholder="Enter phone" />
-              </div>
-            </div>
+    const { data: students } = await supabase
+        .from('student')
+        .select('profile_id,name')
+        .eq('parent', currentParentId)
 
-            <div class="field">
-              <label>Email</label>
-              <input type="email" id="parentEmailInput" placeholder="Enter email" readonly />
-            </div>
+    if (!students || students.length === 0) {
 
-            <button type="submit" id="saveParentProfileBtn" class="btn btn-primary">Save Changes</button>
-          </form>
-        </section>
+        tbody.innerHTML =
+            '<tr><td colspan="4">No children</td></tr>'
+        return
+    }
 
-        <section id="marks" class="card span-6">
-          <div class="card-head">
-            <h3>Recent Marks</h3>
-            <p class="muted">Student latest results</p>
-          </div>
+    const studentIds = students.map(s => s.profile_id)
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Marks</th>
-                  <th>Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan="3" style="text-align:center" class="muted">No recent marks found.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+    const studentMap =
+        Object.fromEntries(students.map(s => [s.profile_id, s.name]))
 
-        <section id="leave" class="card span-12">
-          <div class="card-head">
-            <h3>Verify Leave Requests</h3>
-            <p class="muted">Review pending leave requests for your children</p>
-          </div>
+    const { data: attendance } = await supabase
+        .from('attendance')
+        .select('student_id,status')
+        .in('student_id', studentIds)
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Student Name</th>
-                  <th>Date From</th>
-                  <th>Date To</th>
-                  <th>Reason</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="leaveRequestsTbody">
-                <tr>
-                  <td colspan="6" style="text-align:center">Loading...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-    </main>
-  </div>
+    const stats = {}
+
+    studentIds.forEach(id => {
+        stats[id] = { present: 0, absent: 0 }
+    })
+
+    attendance?.forEach(r => {
+
+        const st = r.status.toLowerCase()
+
+        if (st === "present") stats[r.student_id].present++
+        if (st === "absent") stats[r.student_id].absent++
+
+    })
+
+    tbody.innerHTML = studentIds.map(id => {
+
+        const p = stats[id].present
+        const a = stats[id].absent
+        const t = p + a
+
+        const pct = t === 0 ? 0 : Math.round((p / t) * 100)
+
+        return `
+        <tr>
+            <td>${studentMap[id]}</td>
+            <td>${p}</td>
+            <td>${a}</td>
+            <td><span class="pill">${pct}%</span></td>
+        </tr>
+        `
+
+    }).join('')
+
+}
+
+
+/* ================= PROFILE ================= */
+
+async function loadParentProfile() {
+
+    const { data } = await supabase
+        .from('parents')
+        .select('*')
+        .eq('parents_id', currentParentId)
+        .single()
+
+    if (data) {
+
+        document.getElementById('parentWelcomeName')
+            .textContent = `Welcome, ${data.parent_name}`
+
+        document.getElementById('parentEmailBadge')
+            .textContent = data.parentsemailaddress
+
+        document.getElementById('parentNameInput').value =
+            data.parent_name || ''
+
+        document.getElementById('parentPhoneInput').value =
+            data.parents_phonenumber || ''
+
+        document.getElementById('parentEmailInput').value =
+            data.parentsemailaddress || ''
+
+    }
+
+}
+
+</script>
+
 </body>
-
 </html>

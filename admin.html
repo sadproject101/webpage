@@ -52,7 +52,8 @@
                     <h2>Admin Panel</h2>
                 </div>
                 <div class="nav" style="margin-top: 20px;">
-                    <a href="admin.html" class="nav-item active">Manage Students</a>
+                    <a href="#" class="nav-item active" data-section="manage-students">Manage Students</a>
+                    <a href="#" class="nav-item" data-section="leave-requests">Leave Requests</a>
                     <a href="#" id="openCreateUserModalBtn" class="nav-item">Create User Account</a>
 
                     <!-- Hidden file input for CSV -->
@@ -67,73 +68,87 @@
 
         <!-- Main Content -->
         <main class="main">
-            <div class="topbar">
-                <div>
-                    <h1>Manage Students</h1>
-                    <p class="muted">Create, read, update, and delete student records.</p>
-                </div>
-                <div class="topbar-actions">
-                    <button id="addStudentBtn" class="btn btn-primary">+ Add New Student</button>
-                    <span class="badge">Role: Admin</span>
-                </div>
-            </div>
-
-            <div class="grid">
-                <div class="card span-12">
-                    <div class="card-head">
-                        <h3>Student List</h3>
+            <!-- Manage Students Section -->
+            <section id="manage-students" class="dashboard-section" style="display: flex;">
+                <div class="topbar">
+                    <div>
+                        <h1>Manage Students</h1>
+                        <p class="muted">Create, read, update, and delete student records.</p>
                     </div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Roll No</th>
-                                    <th>Name</th>
-                                    <th>Phone</th>
-                                    <th>DOB</th>
-                                    <th>Gender</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="studentTableBody">
-                                <tr>
-                                    <td colspan="6" style="text-align:center">Loading students...</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div class="topbar-actions">
+                        <button id="addStudentBtn" class="btn btn-primary">+ Add New Student</button>
+                        <span class="badge">Role: Admin</span>
                     </div>
                 </div>
-            </div>
-    </div>
 
-    <div class="grid" style="margin-top:24px">
-        <div class="card span-12">
-            <div class="card-head">
-                <h3>Agreed Leave Requests</h3>
-                <p class="muted">Requests approved by parents, awaiting admin final decision</p>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Student Name</th>
-                            <th>From</th>
-                            <th>To</th>
-                            <th>Reason</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leaveTableBody">
-                        <tr>
-                            <td colspan="6" style="text-align:center">Loading requests...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    </main>
+                <div class="grid">
+                    <div class="card span-12">
+                        <div class="card-head">
+                            <h3>Student List</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Roll No</th>
+                                        <th>Name</th>
+                                        <th>Phone</th>
+                                        <th>DOB</th>
+                                        <th>Gender</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="studentTableBody">
+                                    <tr>
+                                        <td colspan="6" style="text-align:center">Loading students...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Leave Requests Section -->
+            <section id="leave-requests" class="dashboard-section" style="display: none;">
+                <div class="topbar">
+                    <div>
+                        <h1>Leave Requests</h1>
+                        <p class="muted">Requests approved by parents, awaiting admin final decision</p>
+                    </div>
+                    <div class="topbar-actions">
+                        <span class="badge">Role: Admin</span>
+                    </div>
+                </div>
+
+                <div class="grid" style="margin-top:24px">
+                    <div class="card span-12">
+                        <div class="card-head">
+                            <h3>Agreed Leave Requests</h3>
+                        </div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Student Name</th>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Reason</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="leaveTableBody">
+                                    <tr>
+                                        <td colspan="6" style="text-align:center">Loading requests...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
 
     <!-- Student Form Modal -->
@@ -266,6 +281,32 @@
         let currentAdminId = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
+            // Tab Toggle Logic
+            const navItems = document.querySelectorAll('.nav-item[data-section]');
+            const sections = document.querySelectorAll('.dashboard-section');
+
+            function showSection(id) {
+                sections.forEach(section => {
+                    section.style.display = 'none';
+                });
+                const targetSection = document.getElementById(id);
+                if (targetSection) targetSection.style.display = 'flex';
+
+                navItems.forEach(item => item.classList.remove('active'));
+                const activeNav = document.querySelector(`.nav-item[data-section="${id}"]`);
+                if (activeNav) activeNav.classList.add('active');
+            }
+
+            navItems.forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    showSection(item.dataset.section);
+                });
+            });
+
+            // Initial section
+            showSection('manage-students');
+
             const session = await checkSession()
             if (session && session.user) {
                 currentAdminId = session.user.id;

@@ -9,414 +9,388 @@
 </head>
 
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="logo">SMS</div>
-        <div>
-          <h2>Student</h2>
-          <p class="muted">Dashboard</p>
-        </div>
+
+<div class="app">
+
+  <!-- ================= SIDEBAR ================= -->
+
+  <aside class="sidebar">
+
+    <div class="brand">
+      <div class="logo">SMS</div>
+      <div>
+        <h2>Student</h2>
+        <p class="muted">Dashboard</p>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <a class="nav-item active" data-section="attendance">View My Attendance</a>
+      <a class="nav-item" data-section="profile">Update My Profile</a>
+      <a class="nav-item" data-section="marks">View Recent Marks</a>
+      <a class="nav-item" data-section="leave">Request Leave</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost" id="logoutBtn">Logout</button>
+    </div>
+
+  </aside>
+
+  <!-- ================= MAIN CONTENT ================= -->
+
+  <main class="main">
+
+    <!-- ======= TOP BAR ======= -->
+
+    <header class="topbar">
+      <div>
+        <h1 id="studentWelcomeName">Welcome, Student</h1>
+        <p class="muted">Here’s your academic overview.</p>
       </div>
 
-      <nav class="nav">
-        <a class="nav-item active" href="#attendance">View My Attendance</a>
-        <a class="nav-item" href="#profile">Update My Profile</a>
-        <a class="nav-item" href="#marks">View Recent Marks</a>
-        <a class="nav-item" href="#leave">Request Leave</a>
-      </nav>
+      <div class="topbar-actions">
+        <span class="badge">
+          Roll No: <span id="studentRollNo">Loading...</span>
+        </span>
 
-      <div class="sidebar-footer">
-        <button class="btn btn-ghost" id="logoutBtn">Logout</button>
+        <span class="badge">
+          Program: <span id="studentDept">Loading...</span>
+        </span>
       </div>
-    </aside>
+    </header>
 
-    <script type="module">
-      import { checkSession, signOut } from './auth.js'
-      import { supabase } from './supabase.js'
+    <!-- ======= DASHBOARD GRID ======= -->
 
-      let currentUserId = null
+    <section class="grid">
 
-      // Check session on load
-      checkSession().then(async (session) => {
-        if (session && session.user) {
-          currentUserId = session.user.id
-          await loadStudentProfile(currentUserId)
-        }
-      }).catch(err => {
-        console.error('Session error:', err)
-      })
+      <!-- Attendance Section -->
 
-      // Handle logout
-      document.getElementById('logoutBtn').addEventListener('click', () => {
-        signOut()
-      })
+      <section id="attendance" class="card span-6 dashboard-section">
+        <h3>My Attendance</h3>
 
-
-
-      // ── Leave Request ─────────────────────────────────────────────
-      document.getElementById('leaveForm').addEventListener('submit', async (e) => {
-        e.preventDefault()
-        if (!currentUserId) return
-
-        const btn = document.getElementById('leaveSubmitBtn')
-        const orig = btn.textContent
-        btn.textContent = 'Submitting...'
-        btn.disabled = true
-
-        const start_date = document.getElementById('leaveFrom').value
-        const end_date = document.getElementById('leaveTo').value
-        const reason = document.getElementById('leaveReason').value.trim()
-
-        if (!start_date || !end_date || !reason) {
-          alert('Please fill in all fields.')
-          btn.textContent = orig; btn.disabled = false; return
-        }
-        if (end_date < start_date) {
-          alert('"To" date cannot be before "From" date.')
-          btn.textContent = orig; btn.disabled = false; return
-        }
-
-        try {
-          const { error } = await supabase.from('leave_request').insert([{
-            requester_id: currentUserId,
-            start_date,
-            end_date,
-            reason,
-            status: 'applied',
-            approved_by: null
-          }])
-          if (error) throw error
-          alert('Leave request submitted!')
-          e.target.reset()
-          loadLeaveRequests()
-        } catch (err) {
-          alert('Failed to submit: ' + err.message)
-        } finally {
-          btn.textContent = orig
-          btn.disabled = false
-        }
-      })
-
-      async function loadLeaveRequests() {
-        const tbody = document.getElementById('leaveHistoryTbody')
-        if (!tbody || !currentUserId) return
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">Loading...</td></tr>'
-        const { data, error } = await supabase
-          .from('leave_request')
-          .select('start_date, end_date, reason, status')
-          .eq('requester_id', currentUserId)
-          .order('start_date', { ascending: false })
-        if (error) { tbody.innerHTML = `<tr><td colspan="4">${error.message}</td></tr>`; return }
-        if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No requests yet.</td></tr>'; return }
-        const pillClass = { applied: 'warn', approved: 'good', rejected: 'ok' }
-        tbody.innerHTML = data.map(r => `
-          <tr>
-            <td>${r.start_date}</td><td>${r.end_date}</td>
-            <td>${r.reason}</td>
-            <td><span class="pill ${pillClass[r.status] || ''}">${r.status}</span></td>
-          </tr>`).join('')
-      }
-      async function loadAttendance() {
-        const tbody = document.getElementById('attTbody')
-        if (!tbody || !currentUserId) return
-
-        try {
-          const { data, error } = await supabase
-            .from('attendance')
-            .select('date, status, subject, remarks')
-            .eq('student_id', currentUserId)
-            .order('date', { ascending: false })
-
-          if (error) throw error
-
-          let presentCount = 0
-          let absentCount = 0
-
-          if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">No records yet.</td></tr>'
-            document.getElementById('attPresent').textContent = '0'
-            document.getElementById('attAbsent').textContent = '0'
-            document.getElementById('attPercent').textContent = '0%'
-            return
-          }
-
-          const html = data.map(r => {
-            const st = r.status.toLowerCase()
-            if (st === 'present') presentCount++
-            if (st === 'absent') absentCount++
-            const pillClass = st === 'present' ? 'good' : (st === 'late' ? 'warn' : 'warn') // using warn for absent too
-
-            return `
+        <div class="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <td>${r.date}</td>
-                <td><span class="pill ${pillClass}">${r.status}</span></td>
-                <td>${r.subject || '-'}</td>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Subject</th>
               </tr>
-            `
-          }).join('')
+            </thead>
 
-          tbody.innerHTML = html
+            <tbody id="attTbody">
+              <tr>
+                <td colspan="3">Loading...</td>
+              </tr>
+            </tbody>
 
-          document.getElementById('attPresent').textContent = presentCount
-          document.getElementById('attAbsent').textContent = absentCount
-
-          const total = presentCount + absentCount
-          const percent = total === 0 ? 0 : Math.round((presentCount / total) * 100)
-          document.getElementById('attPercent').textContent = percent + '%'
-
-        } catch (err) {
-          console.error(err)
-          tbody.innerHTML = `<tr><td colspan="3" style="color:red;text-align:center">Failed to load attendance</td></tr>`
-        }
-      }
-
-      // ── Load Student Profile ──────────────────────────────
-      async function loadStudentProfile() {
-        try {
-          const { data, error } = await supabase
-            .from('student')
-            .select('*')
-            .eq('profile_id', currentUserId)
-            .single()
-
-          if (!error && data) {
-            document.getElementById('studentWelcomeName').textContent = `Welcome, ${data.name || 'Student'}`
-            document.getElementById('studentRollNo').textContent = data.roll_number || '-'
-            document.getElementById('studentDept').textContent = data.department || '-'
-
-            document.getElementById('studentRollNoInput').value = data.roll_number || ''
-            document.getElementById('studentName').value = data.name || ''
-            document.getElementById('studentPhone').value = data.phone_num || ''
-            document.getElementById('studentDob').value = data.date_of_birth || ''
-            document.getElementById('studentGender').value = data.gender || ''
-          }
-        } catch (err) {
-          console.error('[loadStudentProfile error]', err)
-        }
-      }
-
-      // Handle Profile Save
-      document.addEventListener('DOMContentLoaded', () => {
-        const profileForm = document.getElementById('profileForm')
-        if (profileForm) {
-          profileForm.addEventListener('submit', async (e) => {
-            e.preventDefault()
-            const btn = document.querySelector('#profileForm button[type="submit"]') || profileForm.querySelector('button')
-            const orig = btn.textContent
-            btn.textContent = 'Saving...'
-            btn.disabled = true
-
-            try {
-              const { error } = await supabase
-                .from('student')
-                .update({
-                  roll_number: document.getElementById('studentRollNoInput').value || null,
-                  name: document.getElementById('studentName').value || null,
-                  phone_num: document.getElementById('studentPhone').value || null,
-                  date_of_birth: document.getElementById('studentDob').value || null,
-                  gender: document.getElementById('studentGender').value || null
-                })
-                .eq('profile_id', currentUserId)
-
-              if (error) throw error
-              alert('Profile updated successfully!')
-              loadStudentProfile() // refresh
-            } catch (err) {
-              alert('Failed to update profile: ' + err.message)
-            } finally {
-              btn.textContent = orig
-              btn.disabled = false
-            }
-          })
-        }
-      })
-
-      // Load data once session is confirmed
-      checkSession().then(s => {
-        if (s) {
-          loadStudentProfile()
-          loadLeaveRequests()
-          loadAttendance()
-        }
-      })
-    </script>
-
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1 id="studentWelcomeName">Welcome, Student</h1>
-          <p class="muted">Here’s your academic overview.</p>
+          </table>
         </div>
-        <div class="topbar-actions">
-          <span class="badge">Roll No: <span id="studentRollNo">Loading...</span></span>
-          <span class="badge">Program: <span id="studentDept">Loading...</span></span>
-        </div>
-      </header>
-
-      <section class="grid">
-        <!-- Attendance -->
-        <section id="attendance" class="card span-6">
-          <div class="card-head">
-            <h3>My Attendance</h3>
-            <p class="muted">Overall summary</p>
-          </div>
-
-          <div class="stats">
-            <div class="stat">
-              <p class="muted">Present</p>
-              <h2 id="attPresent">0</h2>
-            </div>
-            <div class="stat">
-              <p class="muted">Absent</p>
-              <h2 id="attAbsent">0</h2>
-            </div>
-            <div class="stat">
-              <p class="muted">Percentage</p>
-              <h2 id="attPercent">0%</h2>
-            </div>
-          </div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Status</th>
-                  <th>Subject</th>
-                </tr>
-              </thead>
-              <tbody id="attTbody">
-                <tr>
-                  <td colspan="3" style="text-align:center">Loading attendance...</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Profile -->
-        <section id="profile" class="card span-6">
-          <div class="card-head">
-            <h3>Update Profile</h3>
-            <p class="muted">Edit basic details</p>
-          </div>
-
-          <form class="form" id="profileForm">
-            <div class="form-row">
-              <div class="field">
-                <label>Roll Number</label>
-                <input type="number" id="studentRollNoInput" placeholder="Enter roll no" />
-              </div>
-              <div class="field">
-                <label>Full Name</label>
-                <input type="text" id="studentName" placeholder="Enter name" />
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="field">
-                <label>Phone Number</label>
-                <input type="number" id="studentPhone" placeholder="Enter phone" />
-              </div>
-              <div class="field">
-                <label>Date of Birth</label>
-                <input type="date" id="studentDob" />
-              </div>
-            </div>
-
-            <div class="field" style="margin-bottom: 16px;">
-              <label>Gender</label>
-              <select id="studentGender">
-                <option value="">Select Gender</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-
-            <button type="submit" id="saveProfileBtn" class="btn btn-primary">Save Changes</button>
-          </form>
-        </section>
-
-        <!-- Marks -->
-        <section id="marks" class="card span-6">
-          <div class="card-head">
-            <h3>Recent Marks</h3>
-            <p class="muted">Latest test results</p>
-          </div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Subject</th>
-                  <th>Test</th>
-                  <th>Marks</th>
-                  <th>Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan="4" style="text-align:center" class="muted">No recent marks found.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Leave -->
-        <section id="leave" class="card span-6">
-          <div class="card-head">
-            <h3>Request Leave</h3>
-            <p class="muted">Submit leave request for approval</p>
-          </div>
-
-          <form class="form" id="leaveForm">
-            <div class="form-row">
-              <div class="field">
-                <label>From</label>
-                <input type="date" id="leaveFrom" required />
-              </div>
-              <div class="field">
-                <label>To</label>
-                <input type="date" id="leaveTo" required />
-              </div>
-            </div>
-
-            <div class="field">
-              <label>Reason</label>
-              <textarea id="leaveReason" rows="3" placeholder="Write reason..." required></textarea>
-            </div>
-
-            <button type="submit" id="leaveSubmitBtn" class="btn btn-primary">Submit Request</button>
-          </form>
-
-          <!-- Past requests -->
-          <div style="margin-top:20px">
-            <h4 style="margin-bottom:10px;font-size:0.95rem">My Leave History</h4>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>From</th>
-                    <th>To</th>
-                    <th>Reason</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="leaveHistoryTbody">
-                  <tr>
-                    <td colspan="4" style="text-align:center">Loading...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
       </section>
-    </main>
-  </div>
-</body>
 
+      <!-- Profile Section -->
+
+      <section id="profile" class="card span-6 dashboard-section">
+        <h3>Update Profile</h3>
+
+        <form class="form" id="profileForm">
+          <input id="studentRollNoInput" placeholder="Roll No" />
+          <input id="studentName" placeholder="Name" />
+          <input id="studentPhone" placeholder="Phone" />
+          <input type="date" id="studentDob" />
+
+          <select id="studentGender">
+            <option>Male</option>
+            <option>Female</option>
+          </select>
+
+          <button class="btn btn-primary">Save</button>
+        </form>
+      </section>
+
+      <!-- Marks Section -->
+
+      <section id="marks" class="card span-6 dashboard-section">
+        <h3>Recent Marks</h3>
+        <p>No recent marks</p>
+      </section>
+
+      <!-- Leave Section -->
+
+      <section id="leave" class="card span-6 dashboard-section">
+
+        <h3>Request Leave</h3>
+
+        <form class="form" id="leaveForm">
+          <input type="date" id="leaveFrom" required>
+          <input type="date" id="leaveTo" required>
+
+          <textarea id="leaveReason" placeholder="Reason"></textarea>
+
+          <button id="leaveSubmitBtn" class="btn btn-primary">
+            Submit Request
+          </button>
+        </form>
+
+        <div class="table-wrap" style="margin-top: 24px;">
+          <table>
+
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>To</th>
+                <th>Reason</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+
+            <tbody id="leaveHistoryTbody"></tbody>
+
+          </table>
+        </div>
+
+      </section>
+
+    </section>
+
+  </main>
+
+</div>
+
+
+<!-- ================= JAVASCRIPT ================= -->
+
+<script type="module">
+
+import { checkSession, signOut } from './auth.js'
+import { supabase } from './supabase.js'
+
+let currentUserId = null
+
+
+/* ==============================================
+   AUTH SESSION
+============================================== */
+
+checkSession().then(async (session) => {
+
+  if (session && session.user) {
+    currentUserId = session.user.id
+    await loadStudentProfile()
+  }
+
+})
+
+
+/* ==============================================
+   LOGOUT
+============================================== */
+
+document
+.getElementById("logoutBtn")
+.addEventListener("click", () => {
+  signOut()
+})
+
+
+/* ==============================================
+   LEAVE REQUEST
+============================================== */
+
+document
+.getElementById("leaveForm")
+.addEventListener("submit", async (e) => {
+
+  e.preventDefault()
+
+  if (!currentUserId) return
+
+  const btn = document.getElementById("leaveSubmitBtn")
+
+  btn.textContent = "Submitting..."
+  btn.disabled = true
+
+  const start_date = document.getElementById("leaveFrom").value
+  const end_date = document.getElementById("leaveTo").value
+  const reason = document.getElementById("leaveReason").value
+
+  try {
+
+    const { error } = await supabase
+      .from("leave_request")
+      .insert([{
+        requester_id: currentUserId,
+        start_date,
+        end_date,
+        reason,
+        status: "applied"
+      }])
+
+    if (error) throw error
+
+    alert("Leave request submitted")
+    loadLeaveRequests()
+
+  } catch (err) {
+
+    alert(err.message)
+
+  }
+
+  btn.textContent = "Submit Request"
+  btn.disabled = false
+
+})
+
+
+/* ==============================================
+   LOAD LEAVE HISTORY
+============================================== */
+
+async function loadLeaveRequests() {
+
+  const tbody = document.getElementById("leaveHistoryTbody")
+
+  const { data } = await supabase
+    .from("leave_request")
+    .select("*")
+    .eq("requester_id", currentUserId)
+
+  if (!data || data.length === 0) {
+
+    tbody.innerHTML =
+      `<tr><td colspan="4">No requests</td></tr>`
+
+    return
+  }
+
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${r.start_date}</td>
+      <td>${r.end_date}</td>
+      <td>${r.reason}</td>
+      <td>${r.status}</td>
+    </tr>
+  `).join("")
+
+}
+
+
+/* ==============================================
+   LOAD ATTENDANCE
+============================================== */
+
+async function loadAttendance() {
+
+  const tbody = document.getElementById("attTbody")
+
+  const { data } = await supabase
+    .from("attendance")
+    .select("*")
+    .eq("student_id", currentUserId)
+
+  if (!data || data.length === 0) {
+
+    tbody.innerHTML =
+      `<tr><td colspan="3">No records</td></tr>`
+
+    return
+  }
+
+  tbody.innerHTML = data.map(a => `
+    <tr>
+      <td>${a.date}</td>
+      <td>${a.status}</td>
+      <td>${a.subject}</td>
+    </tr>
+  `).join("")
+
+}
+
+
+/* ==============================================
+   LOAD STUDENT PROFILE
+============================================== */
+
+async function loadStudentProfile() {
+
+  const { data } = await supabase
+    .from("student")
+    .select("*")
+    .eq("profile_id", currentUserId)
+    .single()
+
+  if (!data) return
+
+  document.getElementById("studentWelcomeName")
+    .textContent = `Welcome, ${data.name}`
+
+  document.getElementById("studentRollNo")
+    .textContent = data.roll_number
+
+  document.getElementById("studentDept")
+    .textContent = data.department
+
+  document.getElementById("studentRollNoInput")
+    .value = data.roll_number
+
+  document.getElementById("studentName")
+    .value = data.name
+
+  document.getElementById("studentPhone")
+    .value = data.phone_num
+
+  document.getElementById("studentDob")
+    .value = data.date_of_birth
+
+  document.getElementById("studentGender")
+    .value = data.gender
+
+  loadAttendance()
+  loadLeaveRequests()
+
+}
+
+
+/* ==============================================
+   DASHBOARD NAVIGATION
+============================================== */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+  const navItems = document.querySelectorAll(".nav-item")
+  const sections = document.querySelectorAll(".dashboard-section")
+
+  function showSection(id) {
+
+    sections.forEach(section => {
+      section.style.display = "none"
+    })
+
+    document.getElementById(id).style.display = "block"
+
+    navItems.forEach(i => i.classList.remove("active"))
+
+    document
+      .querySelector(`[data-section="${id}"]`)
+      .classList.add("active")
+
+  }
+
+  navItems.forEach(item => {
+
+    item.addEventListener("click", () => {
+      showSection(item.dataset.section)
+    })
+
+  })
+
+  showSection("attendance")
+
+})
+
+</script>
+
+</body>
 </html>

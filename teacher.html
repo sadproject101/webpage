@@ -2,400 +2,509 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SMS | Teacher Dashboard</title>
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS | Teacher Dashboard</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <div class="brand">
+
+<div class="app">
+
+<!-- ================= SIDEBAR ================= -->
+
+<aside class="sidebar">
+
+    <div class="brand">
         <div class="logo">SMS</div>
+
         <div>
-          <h2>Teacher</h2>
-          <p class="muted">Dashboard</p>
+            <h2>Teacher</h2>
+            <p class="muted">Dashboard</p>
         </div>
-      </div>
+    </div>
 
-      <nav class="nav">
-        <a class="nav-item active" href="#attendance">Attendance</a>
-        <a class="nav-item" href="#grade">Grade</a>
-        <a class="nav-item" href="#requests">Leave Requests</a>
-        <a class="nav-item" href="#profile">My Profile</a>
-      </nav>
+    <nav class="nav">
 
-      <div class="sidebar-footer">
+        <a class="nav-item active" data-section="attendance">
+            Attendance
+        </a>
+
+        <a class="nav-item" data-section="grade">
+            Grade
+        </a>
+
+        <a class="nav-item" data-section="profile">
+            My Profile
+        </a>
+
+    </nav>
+
+    <div class="sidebar-footer">
         <button class="btn btn-ghost" id="logoutBtn">Logout</button>
-      </div>
-    </aside>
+    </div>
 
-    <script type="module">
-      import { checkSession, signOut } from './auth.js'
-      import { supabase, supabaseUrl, supabaseAnonKey } from './supabase.js'
+</aside>
 
-      let currentTeacherId = null
-      let currentTeacherEmail = null
-      let currentStudents = []
-      let teacherSubjectValue = null   // set after profile loads
-      let statusEnumValues = []        // fetched from OpenAPI
 
-      const TODAY = new Date().toISOString().split('T')[0]  // YYYY-MM-DD
+<!-- ================= SCRIPT ================= -->
 
-      // ── Fetch status enum from Supabase OpenAPI ───────────────────
-      async function loadStatusEnum() {
-        try {
-          const resp = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`)
-          const spec = await resp.json()
-          const statusProp = spec.definitions?.attendance?.properties?.status
-          if (statusProp?.enum && statusProp.enum.length > 0) {
-            statusEnumValues = statusProp.enum
-          }
-        } catch (err) {
-          console.warn('Could not load status enum, using fallback:', err)
-          statusEnumValues = ['present', 'absent', 'late', 'excused']
-        }
-      }
+<script type="module">
 
-      // ── Fetch subject enum (for My Profile dropdown) ──────────────
-      async function loadSubjectEnums() {
-        const select = document.getElementById('teacherSubject')
-        try {
-          const resp = await fetch(`${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`)
-          const spec = await resp.json()
-          const subjectProp = spec.definitions?.teacher?.properties?.subject
-          if (subjectProp?.enum && subjectProp.enum.length > 0) {
-            select.innerHTML = '<option value="">Select Subject</option>'
-            subjectProp.enum.forEach(val => {
-              const opt = document.createElement('option')
-              opt.value = val
-              opt.textContent = val.replace(/\b\w/g, c => c.toUpperCase())
-              select.appendChild(opt)
-            })
-          }
-        } catch (err) {
-          console.warn('Could not load subject enum:', err)
-        }
-      }
+import { checkSession, signOut } from './auth.js'
+import { supabase, supabaseUrl, supabaseAnonKey } from './supabase.js'
 
-      // Check session on load
-      checkSession().then(async session => {
-        if (session && session.user) {
-          currentTeacherId = session.user.id
-          currentTeacherEmail = session.user.email
-          await Promise.all([loadStatusEnum(), loadSubjectEnums()])
-          await loadTeacherProfile(session.user.id)   // sets teacherSubjectValue
-          initTeacherDashboard()
-        }
-      })
 
-      // Handle logout
-      document.getElementById('logoutBtn').addEventListener('click', () => {
-        signOut()
-      })
+/* ================= GLOBAL VARIABLES ================= */
 
-      async function initTeacherDashboard() {
-        const tbody = document.getElementById('attendanceTbody')
-        const saveBtn = document.getElementById('saveAttendanceBtn')
-        const alreadyMsg = document.getElementById('attendanceAlreadyTaken')
-        const formArea = document.getElementById('attendanceFormArea')
+let currentTeacherId = null
+let currentTeacherEmail = null
+let currentStudents = []
+let teacherSubjectValue = null
+let statusEnumValues = []
 
-        // Show today's date (read-only)
-        document.getElementById('attendanceDateDisplay').value = TODAY
+const TODAY = new Date().toISOString().split('T')[0]
 
-        // Show teacher's subject (read-only)
-        const subjectDisplay = document.getElementById('attendanceSubjectDisplay')
-        if (teacherSubjectValue) {
-          subjectDisplay.value = teacherSubjectValue.replace(/\b\w/g, c => c.toUpperCase())
-        } else {
-          subjectDisplay.value = 'Not set — update your profile first'
-          subjectDisplay.style.color = '#ff5b5b'
-        }
 
-        // ── Check if attendance already recorded today by this teacher ─
-        const { data: existing, error: chkErr } = await supabase
-          .from('attendance')
-          .select('id')
-          .eq('recorded_by', currentTeacherId)
-          .eq('date', TODAY)
-          .limit(1)
+/* ================= DASHBOARD NAVIGATION ================= */
 
-        if (existing && existing.length > 0) {
-          alreadyMsg.style.display = 'block'
-          formArea.style.display = 'none'
-          return
-        }
+document.addEventListener("DOMContentLoaded", () => {
 
-        // ── Load all students ──────────────────────────────────────────
-        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center">Loading students...</td></tr>'
+    const navItems = document.querySelectorAll(".nav-item")
+    const sections = document.querySelectorAll(".dashboard-section")
 
-        try {
-          const { data, error } = await supabase
-            .from('student')
-            .select('*')
-            .order('roll_number')
+    function showSection(id) {
 
-          if (error) throw error
-
-          currentStudents = data || []
-
-          if (currentStudents.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No students found.</td></tr>'
-            return
-          }
-
-          // Build status options HTML from fetched enum values
-          const statusOptions = statusEnumValues.length
-            ? statusEnumValues.map(v =>
-              `<option value="${v}">${v.replace(/\b\w/g, c => c.toUpperCase())}</option>`
-            ).join('')
-            : '<option value="present">Present</option><option value="absent">Absent</option>'
-
-          tbody.innerHTML = ''
-          currentStudents.forEach(student => {
-            const tr = document.createElement('tr')
-            tr.innerHTML = `
-              <td>${student.roll_number || '-'}</td>
-              <td>${student.name || 'Unnamed'}</td>
-              <td>
-                <select class="attendance-select" data-id="${student.profile_id}">
-                  ${statusOptions}
-                </select>
-              </td>
-              <td>
-                <input type="text" class="attendance-remarks"
-                  placeholder="Optional remark" style="min-width:140px" />
-              </td>
-            `
-            tbody.appendChild(tr)
-          })
-
-          saveBtn.disabled = false
-
-        } catch (err) {
-          tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#ff5b5b">Error: ${err.message}</td></tr>`
-        }
-
-        // ── Handle Form Submission ─────────────────────────────────────
-        document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
-          e.preventDefault()
-          if (currentStudents.length === 0) return
-
-          saveBtn.textContent = 'Saving...'
-          saveBtn.disabled = true
-
-          try {
-            const selects = document.querySelectorAll('.attendance-select')
-            const remarkInputs = document.querySelectorAll('.attendance-remarks')
-
-            const payload = Array.from(selects)
-              .map((select, i) => ({
-                student_id: select.dataset.id,
-                date: TODAY,
-                recorded_by: currentTeacherId,
-                subject: teacherSubjectValue || null,
-                remarks: remarkInputs[i]?.value || null,
-                status: select.value
-              }))
-              .filter(p => p.student_id && p.student_id !== 'undefined')
-
-            if (payload.length === 0)
-              throw new Error('No valid student records found.')
-
-            const { error } = await supabase.from('attendance').insert(payload)
-            if (error) throw error
-
-            alert(`Attendance saved for ${payload.length} students!`)
-            // Show the "already taken" banner and hide the form
-            alreadyMsg.style.display = 'block'
-            formArea.style.display = 'none'
-
-          } catch (err) {
-            console.error('Save error:', err)
-            alert('Error saving attendance: ' + err.message)
-          } finally {
-            saveBtn.textContent = 'Save Attendance'
-            saveBtn.disabled = false
-          }
+        sections.forEach(section => {
+            section.style.display = "none"
         })
-      }
 
-      // ── Teacher Profile ──────────────────────────────────────────
-      async function loadTeacherProfile(userId) {
-        try {
-          const { data, error } = await supabase
-            .from('teacher')
-            .select('subject, phone_number')
-            .eq('teacher_id', userId)
-            .maybeSingle()
+        document.getElementById(id).style.display = "flex"
 
-          if (error) { console.warn('Could not load teacher profile:', error.message); return }
+        navItems.forEach(n => n.classList.remove("active"))
 
-          let subj = ''
-          if (data) {
-            subj = data.subject || ''
-            teacherSubjectValue = subj   // used by attendance
-            document.getElementById('teacherSubject').value = subj
-            document.getElementById('teacherPhone').value = data.phone_number || ''
-          }
+        document
+            .querySelector(`[data-section="${id}"]`)
+            .classList.add("active")
+    }
 
-          document.getElementById('teacherEmailBadge').textContent = currentTeacherEmail || 'Teacher'
-          document.getElementById('teacherSubjectBadge').textContent = subj ? `Subject: ${subj}` : 'Subject: Not Set'
+    navItems.forEach(item => {
+        item.addEventListener("click", () => {
+            showSection(item.dataset.section)
+        })
+    })
 
-        } catch (err) {
-          console.error('Error loading teacher profile:', err)
+    showSection("attendance")
+
+})
+
+
+/* ================= SESSION ================= */
+
+checkSession().then(async session => {
+
+    if (session && session.user) {
+
+        currentTeacherId = session.user.id
+        currentTeacherEmail = session.user.email
+
+        await loadStatusEnum()
+        await loadSubjectEnums()
+        await loadTeacherProfile(currentTeacherId)
+
+        initTeacherDashboard()
+    }
+
+})
+
+
+/* ================= LOGOUT ================= */
+
+document
+    .getElementById("logoutBtn")
+    .addEventListener("click", () => {
+        signOut()
+    })
+
+
+/* ================= STATUS ENUM ================= */
+
+async function loadStatusEnum() {
+
+    try {
+
+        const resp = await fetch(
+            `${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`
+        )
+
+        const spec = await resp.json()
+
+        const statusProp =
+            spec.definitions?.attendance?.properties?.status
+
+        if (statusProp?.enum) {
+            statusEnumValues = statusProp.enum
         }
-      }
 
-      document.getElementById('saveProfileBtn').addEventListener('click', async () => {
-        if (!currentTeacherId) return
+    }
+    catch {
 
-        const btn = document.getElementById('saveProfileBtn')
-        const orig = btn.textContent
-        btn.textContent = 'Saving...'
-        btn.disabled = true
+        statusEnumValues = ['present', 'absent', 'late']
 
-        const subject = document.getElementById('teacherSubject').value
-        const phone_number = document.getElementById('teacherPhone').value || null
+    }
 
-        try {
-          // Try update first
-          const { data: updated, error: updErr } = await supabase
-            .from('teacher')
-            .update({ subject, phone_number })
-            .eq('teacher_id', currentTeacherId)
-            .select()
+}
 
-          if (updErr) throw updErr
 
-          // If no row existed yet, insert one
-          if (!updated || updated.length === 0) {
-            const { error: insErr } = await supabase
-              .from('teacher')
-              .insert([{ teacher_id: currentTeacherId, subject, phone_number }])
-            if (insErr) throw insErr
-          }
+/* ================= SUBJECT ENUM ================= */
 
-          alert('Profile saved successfully!')
-        } catch (err) {
-          console.error('Error saving profile:', err)
-          alert('Failed to save profile: ' + err.message)
-        } finally {
-          btn.textContent = orig
-          btn.disabled = false
+async function loadSubjectEnums() {
+
+    const select = document.getElementById("teacherSubject")
+
+    try {
+
+        const resp = await fetch(
+            `${supabaseUrl}/rest/v1/?apikey=${supabaseAnonKey}`
+        )
+
+        const spec = await resp.json()
+
+        const subjectProp =
+            spec.definitions?.teacher?.properties?.subject
+
+        if (subjectProp?.enum) {
+
+            select.innerHTML =
+                '<option value="">Select Subject</option>'
+
+            subjectProp.enum.forEach(val => {
+
+                const opt = document.createElement("option")
+
+                opt.value = val
+                opt.textContent = val
+
+                select.appendChild(opt)
+
+            })
+
         }
-      })
-    </script>
 
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1 id="teacherWelcomeName">Welcome, Teacher</h1>
-          <p class="muted">Manage attendance, grades, and profile.</p>
-        </div>
-        <div class="topbar-actions">
-          <span class="badge" id="teacherEmailBadge">Loading...</span>
-          <span class="badge" id="teacherSubjectBadge">Subject: Loading...</span>
-        </div>
-      </header>
+    } catch {}
 
-      <section class="grid">
-        <!-- Attendance -->
-        <section id="attendance" class="card span-6">
-          <div class="card-head">
-            <h3>Attendance</h3>
-            <p class="muted">Mark student attendance for today</p>
-          </div>
+}
 
-          <!-- Info row: date + subject (read-only) -->
-          <div class="form-row" style="margin-bottom:12px">
-            <div class="field">
-              <label>Date</label>
-              <input type="text" id="attendanceDateDisplay" readonly
-                style="background:rgba(255,255,255,0.03);cursor:default" />
-            </div>
-            <div class="field">
-              <label>Subject</label>
-              <input type="text" id="attendanceSubjectDisplay" readonly
-                style="background:rgba(255,255,255,0.03);cursor:default" />
-            </div>
-          </div>
 
-          <!-- Already-taken banner (hidden by default) -->
-          <div id="attendanceAlreadyTaken" style="display:none;padding:14px;border-radius:12px;
-               background:rgba(91,250,170,0.1);border:1px solid rgba(91,250,170,0.25);margin-bottom:12px;">
-            ✅ Attendance has already been recorded for today.
-          </div>
+/* ================= TEACHER PROFILE ================= */
 
-          <!-- Form area (shown when not yet taken) -->
-          <div id="attendanceFormArea">
-            <form class="form" id="attendanceForm">
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Roll No</th>
-                      <th>Name</th>
-                      <th>Status</th>
-                      <th>Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody id="attendanceTbody">
-                    <tr>
-                      <td colspan="4" style="text-align:center">Loading students...</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+async function loadTeacherProfile(userId) {
 
-              <button type="submit" id="saveAttendanceBtn" class="btn btn-primary" disabled style="margin-top:12px">Save
-                Attendance</button>
-            </form>
-          </div>
-        </section>
+    const { data } = await supabase
+        .from("teacher")
+        .select("subject,phone_number")
+        .eq("teacher_id", userId)
+        .maybeSingle()
 
-        <!-- Grade -->
-        <section id="grade" class="card span-6">
-          <div class="card-head">
-            <h3>Grade</h3>
-            <p class="muted">Update marks and grades</p>
-          </div>
+    if (data) {
 
-          <div class="form-row" style="margin-top: 1rem;">
-            <p class="muted">The Grading module is under construction and will be available soon.</p>
-          </div>
-        </section>
+        teacherSubjectValue = data.subject
 
-        <!-- Profile -->
-        <section id="profile" class="card span-12">
-          <div class="card-head">
-            <h3>My Profile</h3>
-            <p class="muted">Update your subject and contact info</p>
-          </div>
+        document.getElementById("teacherSubject").value =
+            data.subject || ""
 
-          <div class="form" style="max-width: 520px;">
-            <div class="form-row">
-              <div class="field">
-                <label>Subject</label>
-                <select id="teacherSubject">
-                  <option value="">Loading subjects...</option>
+        document.getElementById("teacherPhone").value =
+            data.phone_number || ""
+
+    }
+
+    document.getElementById("teacherEmailBadge").textContent =
+        currentTeacherEmail || "Teacher"
+
+    document.getElementById("teacherSubjectBadge").textContent =
+        teacherSubjectValue
+            ? `Subject: ${teacherSubjectValue}`
+            : "Subject: Not Set"
+
+}
+
+
+/* ================= ATTENDANCE ================= */
+
+async function initTeacherDashboard() {
+
+    const tbody = document.getElementById("attendanceTbody")
+
+    const saveBtn =
+        document.getElementById("saveAttendanceBtn")
+
+    document.getElementById("attendanceDateDisplay").value = TODAY
+
+    document.getElementById("attendanceSubjectDisplay").value =
+        teacherSubjectValue || "Update profile first"
+
+
+    const { data: students } = await supabase
+        .from("student")
+        .select("*")
+        .order("roll_number")
+
+    currentStudents = students || []
+
+
+    if (currentStudents.length === 0) {
+
+        tbody.innerHTML =
+            '<tr><td colspan="4">No students</td></tr>'
+
+        return
+
+    }
+
+
+    const statusOptions =
+        statusEnumValues
+            .map(v => `<option>${v}</option>`)
+            .join("")
+
+    tbody.innerHTML = ""
+
+
+    currentStudents.forEach(student => {
+
+        const tr = document.createElement("tr")
+
+        tr.innerHTML = `
+
+            <td>${student.roll_number || "-"}</td>
+            <td>${student.name || "Unnamed"}</td>
+
+            <td>
+                <select class="attendance-select"
+                        data-id="${student.profile_id}">
+                        ${statusOptions}
                 </select>
-              </div>
-              <div class="field">
-                <label>Phone Number</label>
-                <input type="number" id="teacherPhone" placeholder="Enter phone number" />
-              </div>
-            </div>
-            <div>
-              <button type="button" id="saveProfileBtn" class="btn btn-primary">Save Profile</button>
-            </div>
-          </div>
-        </section>
+            </td>
 
-      </section>
-    </main>
-  </div>
+            <td>
+                <input class="attendance-remarks"
+                       placeholder="Remark">
+            </td>
+
+        `
+
+        tbody.appendChild(tr)
+
+    })
+
+
+    saveBtn.disabled = false
+
+
+    document
+        .getElementById("attendanceForm")
+        .addEventListener("submit", async (e) => {
+
+            e.preventDefault()
+
+            const selects =
+                document.querySelectorAll(".attendance-select")
+
+            const remarks =
+                document.querySelectorAll(".attendance-remarks")
+
+            const payload =
+                Array.from(selects).map((select, i) => ({
+
+                    student_id: select.dataset.id,
+                    date: TODAY,
+                    recorded_by: currentTeacherId,
+                    subject: teacherSubjectValue,
+                    remarks: remarks[i].value || null,
+                    status: select.value
+
+                }))
+
+            const { error } =
+                await supabase
+                    .from("attendance")
+                    .insert(payload)
+
+            if (error) {
+
+                alert(error.message)
+
+            } else {
+
+                alert("Attendance saved!")
+
+            }
+
+        })
+
+}
+
+</script>
+
+
+<!-- ================= MAIN ================= -->
+
+<main class="main">
+
+    <header class="topbar">
+
+    <div>
+        <h1>Welcome, Teacher</h1>
+        <p class="muted">Manage attendance and profile</p>
+    </div>
+
+    <div class="topbar-actions">
+
+      <span class="badge" id="teacherEmailBadge">
+        Loading...
+      </span>
+
+      <span class="badge" id="teacherSubjectBadge">
+        Subject: Loading...
+      </span>
+
+    </div>
+
+    </header>
+
+
+    <section class="grid">
+
+<!-- ================= ATTENDANCE ================= -->
+
+    <section id="attendance"
+      class="card span-12 dashboard-section">
+
+      <div class="card-head">
+
+        <h3>Attendance</h3>
+
+          <p class="muted">
+            Mark student attendance
+          </p>
+
+      </div>
+
+      <div class="form-row">
+
+        <div class="field">
+          <label>Date</label>
+              <input id="attendanceDateDisplay" readonly>
+        </div>
+
+      <div class="field">
+            <label>Subject</label>
+              <input id="attendanceSubjectDisplay" readonly>
+        </div>
+
+      </div>
+
+    <form id="attendanceForm" style="margin-top: 24px;">
+
+        <div class="table-wrap">
+
+      <table>
+
+        <thead>
+
+          <tr>
+              <th>Roll No</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Remarks</th>
+          </tr>
+
+        </thead>
+
+        <tbody id="attendanceTbody">
+
+          <tr>
+              <td colspan="4">Loading...</td>
+          </tr>
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  <button
+      class="btn btn-primary"
+      id="saveAttendanceBtn"
+      style="margin-top:12px"
+      disabled>
+
+      Save Attendance
+
+  </button>
+
+</form>
+
+</section>
+
+
+<!-- ================= GRADE ================= -->
+
+<section id="grade"
+    class="card span-12 dashboard-section">
+
+    <div class="card-head">
+
+        <h3>Grade</h3>
+
+        <p class="muted">
+        The grading module will be available soon
+        </p>
+
+    </div>
+
+</section>
+
+
+<!-- ================= PROFILE ================= -->
+
+<section id="profile"
+      class="card span-12 dashboard-section">
+
+      <div class="card-head">
+          <h3>My Profile</h3>
+      </div>
+
+      <div class="form">
+
+            <div class="form-row">
+
+                  <div class="field">
+                      <label>Subject</label>
+                        <select id="teacherSubject"></select>
+                  </div>
+
+                  <div class="field">
+                      <label>Phone</label>
+                        <input id="teacherPhone">
+                  </div>
+
+            </div>
+
+          <button class="btn btn-primary" id="saveProfileBtn">
+            Save Profile
+          </button>
+
+      </div>
+
+</section>
+
+</section>
+
+</main>
+
+</div>
+
 </body>
-
 </html>
